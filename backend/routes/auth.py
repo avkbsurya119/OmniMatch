@@ -171,3 +171,124 @@ def register_hospital(req: HospitalRegisterRequest):
         if user_id:
             try:
                 supabase_auth.auth.admin.delete_user(user_id)
+                print(f"[register_hospital] Cleaned up user {user_id}")
+            except Exception as delete_err:
+                print(f"[register_hospital] Cleanup failed: {delete_err}")
+        err_msg = str(e)
+        if "duplicate key" in err_msg.lower():
+            raise HTTPException(status_code=400, detail="Registration number already exists")
+        raise HTTPException(status_code=400, detail=f"Registration failed: {err_msg}")
+
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to create hospital profile")
+
+    return {
+        "success": True,
+        "hospital_id": user_id,
+        "message": "Hospital registered successfully.",
+    }
+
+
+# ── Login ─────────────────────────────────────────────────────────────────────
+
+@router.post("/login")
+def login(req: LoginRequest):
+    try:
+        res = supabase_auth.auth.sign_in_with_password({
+            "email": req.email,
+            "password": req.password,
+        })
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Login failed: {e}")
+
+    if not res.session:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    user_id = res.user.id
+    profile = None
+    redirect = "/dashboard"
+
+    try:
+        if req.role == "donor":
+            # Include lat/lng so donor can also appear on maps if needed
+            p = supabase.table("donors") \
+                .select("name,city,blood_group,trust_score,is_verified,donor_types,lat,lng") \
+                .eq("id", user_id).single().execute()
+            profile = p.data
+            redirect = "/dashboard"
+
+        elif req.role == "hospital":
+            # ← CRITICAL: select lat,lng — these power the blue hospital pin on the map
+            p = supabase.table("hospitals") \
+                .select("name,city,is_verified,lat,lng") \
+                .eq("id", user_id).single().execute()
+            profile = p.data
+            redirect = "/dashboard?role=hospital"
+
+    except Exception as e:
+        # Profile not found in DB means they are trying to log in with the wrong role
+        print(f"[login] Profile lookup failed for {req.role} {user_id}: {e}")
+        error_msg = "No donor profile found." if req.role == "donor" else "No hospital profile found."
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Invalid login portal: {error_msg} Are you trying to log in as a {'hospital' if req.role == 'donor' else 'donor'}?"
+        )
+
+    return {
+        "success":      True,
+        "access_token": res.session.access_token,
+        "user_id":      user_id,
+        "role":         req.role,
+        "profile":      profile,   # contains lat/lng for hospital
+        "redirect":     redirect,
+    }
+
+
+# ── OTP Send ──────────────────────────────────────────────────────────────────
+
+@router.post("/otp/send")
+def send_otp(req: OtpSendRequest):
+    otp = "".join(random.choices(string.digits, k=6))
+
+    supabase.table("otp_store").upsert({
+        "mobile": req.mobile,
+        "otp": otp,
+    }).execute()
+
+    sms_sent = send_sms(
+        req.mobile,
+        f"Your OmniMatch OTP is: {otp}. Valid for 10 minutes. Do not share."
+    )
+
+    return {
+        "success":  True,
+        "sms_sent": sms_sent,
+        "otp_dev":  otp,  # remove in production
+        "message":  f"OTP {'sent via SMS' if sms_sent else 'generated (SMS not configured)'}.",
+    }
+
+
+# ── OTP Verify ────────────────────────────────────────────────────────────────
+
+@router.post("/otp/verify")
+def verify_otp(req: OtpVerifyRequest):
+    res = supabase.table("otp_store") \
+        .select("otp, created_at") \
+        .eq("mobile", req.mobile) \
+        .single() \
+        .execute()
+
+    if not res.data:
+        raise HTTPException(status_code=400, detail="No OTP found for this mobile number")
+
+    stored = res.data
+    created = datetime.fromisoformat(stored["created_at"].replace("Z", "+00:00"))
+    if datetime.now(timezone.utc) - created > timedelta(minutes=10):
+        raise HTTPException(status_code=400, detail="OTP expired. Please request a new one.")
+
+    if stored["otp"] != req.otp:
+        raise HTTPException(status_code=400, detail="Incorrect OTP")
+
+    supabase.table("otp_store").delete().eq("mobile", req.mobile).execute()
+
+    return {"success": True, "verified": True, "mobile": req.mobile}
