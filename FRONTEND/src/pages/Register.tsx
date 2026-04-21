@@ -341,3 +341,373 @@ function DonorRegister() {
                 placeholder="Min 8 characters"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                className="h-11 rounded-xl font-body pr-12"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass(!showPass)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              >
+                {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="font-body font-semibold text-sm">Confirm Password</Label>
+            <Input type="password" placeholder="••••••••" value={confirmPass} onChange={(e) => setConfirmPass(e.target.value)} className="h-11 rounded-xl font-body" />
+          </div>
+          <div className="flex items-start gap-2 mt-2">
+            <Checkbox id="terms" className="mt-0.5 border-primary data-[state=checked]:bg-primary" />
+            <label htmlFor="terms" className="font-body text-xs text-muted-foreground leading-relaxed">
+              I agree to the <a href="#" className="text-primary hover:underline">Terms of Service</a>,{" "}
+              <a href="#" className="text-primary hover:underline">Privacy Policy</a>, and consent to sharing my anonymized data for matching purposes.
+            </label>
+          </div>
+          {error && (
+            <p className="font-body text-sm text-blood font-semibold">{error}</p>
+          )}
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => setStep(2)} className="flex-1 h-12 border-border font-body rounded-xl">
+              <ChevronLeft className="w-4 h-4 mr-1" /> Back
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={loading}
+              className="flex-1 h-12 bg-gradient-primary text-primary-foreground font-body font-bold rounded-xl shadow-primary"
+            >
+              {loading ? "Creating..." : "Create Account ✓"}
+            </Button>
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
+const orgTypes = [
+  {
+    id: "hospital",
+    label: "Hospital",
+    emoji: "🏥",
+    nameLabel: "Hospital Name",
+    namePlaceholder: "Apollo Hospitals, Mumbai",
+    regLabel: "Registration Number",
+    regPlaceholder: "MH/HOS/XXXX",
+    licenseLabel: "License Number",
+    licensePlaceholder: "Hospital License No.",
+    docsHint: "Registration cert, License, NABH docs",
+    contactLabel: "Contact Person",
+    contactPlaceholder: "Dr. Priya Menon",
+    emailPlaceholder: "admin@hospital.in",
+    submitLabel: "Register Hospital",
+  },
+  {
+    id: "bloodbank",
+    label: "Blood Bank",
+    emoji: "🩸",
+    nameLabel: "Blood Bank Name",
+    namePlaceholder: "City Blood Bank, Delhi",
+    regLabel: "Registration Number",
+    regPlaceholder: "BB/REG/XXXX",
+    licenseLabel: "Blood Bank License",
+    licensePlaceholder: "CDSCO License No.",
+    docsHint: "CDSCO License, Registration cert, SOP docs",
+    contactLabel: "In-charge Name",
+    contactPlaceholder: "Dr. Ramesh Kumar",
+    emailPlaceholder: "contact@bloodbank.in",
+    submitLabel: "Register Blood Bank",
+  },
+  {
+    id: "orphanage",
+    label: "Orphanage",
+    emoji: "🏠",
+    nameLabel: "Orphanage Name",
+    namePlaceholder: "Hope Children's Home, Pune",
+    regLabel: "Trust/Society Reg. No.",
+    regPlaceholder: "TR/XXXX/XXXX",
+    licenseLabel: "CARA / State License",
+    licensePlaceholder: "License Number",
+    docsHint: "Trust deed, Registration cert, CARA approval",
+    contactLabel: "Warden / In-charge",
+    contactPlaceholder: "Mrs. Sunita Rao",
+    emailPlaceholder: "warden@orphanage.org",
+    submitLabel: "Register Orphanage",
+  },
+  {
+    id: "ngo",
+    label: "NGO / Foundation",
+    emoji: "🤝",
+    nameLabel: "NGO / Foundation Name",
+    namePlaceholder: "Helping Hands Foundation",
+    regLabel: "NGO / 80G Reg. Number",
+    regPlaceholder: "NGO/DARPAN/XXXX",
+    licenseLabel: "FCRA / 12A Number",
+    licensePlaceholder: "FCRA No. (if applicable)",
+    docsHint: "NGO Darpan cert, 80G / 12A, PAN card",
+    contactLabel: "Founder / Director",
+    contactPlaceholder: "Mr. Arjun Nair",
+    emailPlaceholder: "contact@ngo.org",
+    submitLabel: "Register NGO / Foundation",
+  },
+];
+
+function HospitalRegister() {
+  const [showPass, setShowPass] = useState(false);
+  const [orgType, setOrgType] = useState("hospital");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
+
+  // Form fields
+  const [name, setName] = useState("");
+  const [regNumber, setRegNumber] = useState("");
+  const [license, setLicense] = useState("");
+  const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [contactPerson, setContactPerson] = useState("");
+  const [contactMobile, setContactMobile] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const org = orgTypes.find((o) => o.id === orgType)!;
+
+  const handleSubmit = async () => {
+    setError("");
+    if (!name || !regNumber || !address || !city || !contactPerson || !contactEmail || !password) {
+      setError("Please fill in all required fields");
+      return;
+    }
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
+    setLoading(true);
+    try {
+      await api.auth.registerHospital({
+        name,
+        reg_number: regNumber,
+        license: license || undefined,
+        address,
+        city,
+        contact_person: contactPerson,
+        contact_mobile: contactMobile,
+        contact_email: contactEmail,
+        password,
+      });
+      toast.success("Account created successfully! Please log in to continue.");
+      navigate("/login");
+    } catch (e: any) {
+      let msg = e.message || "Registration failed";
+      if (typeof msg === "object" || msg === "[object Object]") {
+          msg = "Please check all required fields and try again.";
+      }
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+
+      {/* Organization Type Radio Buttons */}
+      <div className="space-y-2">
+        <Label className="font-body font-semibold text-sm">Organization Type</Label>
+        <div className="grid grid-cols-2 gap-2">
+          {orgTypes.map((type) => (
+            <button
+              key={type.id}
+              type="button"
+              onClick={() => setOrgType(type.id)}
+              className={`flex items-center gap-2 p-3 rounded-xl border-2 text-left transition-all font-body text-sm font-semibold ${orgType === type.id
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:border-primary/40"
+                }`}
+            >
+              <span className="text-lg">{type.emoji}</span>
+              {type.label}
+              {orgType === type.id && (
+                <span className="ml-auto w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Dynamic fields based on org type */}
+      <motion.div
+        key={orgType}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
+        className="grid grid-cols-2 gap-4"
+      >
+        <div className="col-span-2 space-y-1.5">
+          <Label className="font-body font-semibold text-sm">{org.nameLabel}</Label>
+          <Input placeholder={org.namePlaceholder} value={name} onChange={(e) => setName(e.target.value)} className="h-11 rounded-xl font-body" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="font-body font-semibold text-sm">{org.regLabel}</Label>
+          <Input placeholder={org.regPlaceholder} value={regNumber} onChange={(e) => setRegNumber(e.target.value)} className="h-11 rounded-xl font-body" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="font-body font-semibold text-sm">{org.licenseLabel}</Label>
+          <Input placeholder={org.licensePlaceholder} value={license} onChange={(e) => setLicense(e.target.value)} className="h-11 rounded-xl font-body" />
+        </div>
+        <div className="col-span-2 space-y-1.5">
+          <Label className="font-body font-semibold text-sm">Full Address</Label>
+          <Input placeholder="Street, Area, State - PIN" value={address} onChange={(e) => setAddress(e.target.value)} className="h-11 rounded-xl font-body" />
+        </div>
+        <div className="col-span-2 space-y-1.5">
+          <Label className="font-body font-semibold text-sm">City</Label>
+          <Input placeholder="E.g., Mumbai, Delhi, Kochi" value={city} onChange={(e) => setCity(e.target.value)} className="h-11 rounded-xl font-body" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="font-body font-semibold text-sm">{org.contactLabel}</Label>
+          <Input placeholder={org.contactPlaceholder} value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} className="h-11 rounded-xl font-body" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="font-body font-semibold text-sm">Contact Mobile</Label>
+          <Input type="tel" placeholder="Mobile Number" value={contactMobile} onChange={(e) => setContactMobile(e.target.value)} className="h-11 rounded-xl font-body" />
+        </div>
+        <div className="col-span-2 space-y-1.5">
+          <Label className="font-body font-semibold text-sm">Official Email</Label>
+          <Input type="email" placeholder={org.emailPlaceholder} value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className="h-11 rounded-xl font-body" />
+        </div>
+        <div className="col-span-2 space-y-1.5">
+          <Label className="font-body font-semibold text-sm">Upload Documents</Label>
+          <FileUploadZone
+            accept="image/*,.pdf"
+            maxSizeMB={10}
+            hint={org.docsHint}
+            multiple
+            accentClass="primary"
+          />
+        </div>
+        <div className="col-span-2 space-y-1.5">
+          <Label className="font-body font-semibold text-sm">Password</Label>
+          <div className="relative">
+            <Input
+              type={showPass ? "text" : "password"}
+              placeholder="Secure password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="h-11 rounded-xl font-body pr-12"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPass(!showPass)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            >
+              {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+
+      {error && (
+        <p className="font-body text-sm text-blood font-semibold">{error}</p>
+      )}
+
+      <Button
+        onClick={handleSubmit}
+        disabled={loading}
+        className="w-full h-12 bg-gradient-primary text-primary-foreground font-body font-bold rounded-xl shadow-primary"
+      >
+        {loading ? "Registering..." : org.submitLabel}
+      </Button>
+    </motion.div>
+  );
+}
+
+export default function RegisterPage() {
+  const [searchParams] = useSearchParams();
+  const defaultTab = searchParams.get("type") === "hospital" ? "hospital" : "donor";
+
+  return (
+    <div className="min-h-screen bg-background flex">
+      {/* Left panel */}
+      <div className="hidden lg:flex flex-col w-[42%] bg-gradient-hero relative overflow-hidden">
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 right-20 w-64 h-64 rounded-full bg-accent blur-3xl" />
+        </div>
+        <div className="relative flex flex-col justify-between h-full p-12">
+          <Link to="/" className="flex items-center gap-2">
+            <div className="w-10 h-10 rounded-xl bg-primary-foreground/20 flex items-center justify-center">
+              <Heart className="w-6 h-6 text-primary-foreground fill-current" />
+            </div>
+            <div>
+              <div className="font-display font-bold text-xl text-primary-foreground">OmniMatch</div>
+              <div className="font-body text-xs text-accent font-bold tracking-widest uppercase -mt-1">Connect</div>
+            </div>
+          </Link>
+
+          <div>
+            <h2 className="font-display text-4xl font-black text-primary-foreground leading-tight mb-4">
+              Join 12 Lakh+<br />Lifesavers.
+            </h2>
+            <p className="font-body text-primary-foreground/70 leading-relaxed mb-8">
+              Register once. Save lives forever. Your single donation can impact up to 8 people directly.
+            </p>
+            <div className="space-y-4">
+              {[
+                { emoji: "🛡️", label: "Aadhaar-verified, fully secure" },
+                { emoji: "🎖️", label: "Build your Trust Score over time" },
+                { emoji: "📱", label: "Real-time alerts for nearby needs" },
+                { emoji: "❤️", label: "See the impact of each donation" },
+              ].map(({ emoji, label }) => (
+                <div key={label} className="flex items-center gap-3 text-primary-foreground/80">
+                  <span>{emoji}</span>
+                  <span className="font-body text-sm">{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <p className="font-body text-xs text-primary-foreground/40">© 2025 OmniMatch</p>
+        </div>
+      </div>
+
+      {/* Right panel */}
+      <div className="flex-1 flex flex-col items-center justify-start p-6 md:p-8 overflow-y-auto">
+        <div className="w-full max-w-lg py-4">
+          <Link to="/" className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors mb-6 font-body text-sm">
+            <ArrowLeft className="w-4 h-4" /> Back to Home
+          </Link>
+
+          <div className="lg:hidden flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-xl bg-gradient-primary flex items-center justify-center">
+              <Heart className="w-4 h-4 text-primary-foreground fill-current" />
+            </div>
+            <span className="font-display font-bold text-lg text-foreground">OmniMatch</span>
+          </div>
+
+          <h1 className="font-display text-3xl font-bold text-foreground mb-1">Create Account</h1>
+          <p className="font-body text-sm text-muted-foreground mb-6">
+            Already registered?{" "}
+            <Link to="/login" className="text-primary font-semibold hover:underline">Login</Link>
+          </p>
+
+          <Tabs defaultValue={defaultTab}>
+            <TabsList className="w-full grid grid-cols-2 bg-muted rounded-xl h-11 mb-6">
+              <TabsTrigger value="donor" className="rounded-lg font-body font-semibold">
+                🩸 Donor / Individual
+              </TabsTrigger>
+              <TabsTrigger value="hospital" className="rounded-lg font-body font-semibold">
+                🏥 Hospital / Org
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="donor">
+              <DonorRegister />
+            </TabsContent>
+            <TabsContent value="hospital">
+              <HospitalRegister />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
+    </div>
+  );
+}
