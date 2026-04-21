@@ -231,3 +231,143 @@ Step 6: Hospital Notification
 ---
 
 ## 🛠️ Local Development Setup
+
+### Prerequisites
+- Node.js 18+
+- Python 3.10+
+- Supabase account
+
+### Frontend Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/your-org/omnimatch.git
+cd omnimatch/FRONTEND
+
+# Install dependencies
+npm install
+
+# Configure environment
+cp .env.example .env
+# Edit .env and set:
+# VITE_API_URL=http://localhost:8001
+
+# Start development server
+npm run dev
+```
+
+> 🌐 Frontend runs at: http://localhost:5173
+
+---
+
+### Backend Setup
+
+```bash
+cd ../BACKEND
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure environment
+cp .env.example .env
+# Edit .env and set your Supabase credentials, Twilio keys, etc.
+
+# Start the server
+uvicorn main:app --reload --port 8001
+```
+
+> ⚙️ Backend API runs at: http://localhost:8001
+
+---
+
+### Environment Variables
+
+#### Frontend (`FRONTEND/.env`)
+```env
+VITE_API_URL=http://localhost:8001
+```
+
+#### Backend (`BACKEND/.env`)
+```env
+SUPABASE_URL=your_supabase_url
+SUPABASE_KEY=your_supabase_anon_key
+TWILIO_ACCOUNT_SID=your_twilio_sid
+TWILIO_AUTH_TOKEN=your_twilio_token
+TWILIO_PHONE_NUMBER=your_twilio_number
+```
+
+---
+
+## 🧪 Testing
+
+### Register Test Accounts
+1. Go to `/register` → create a **donor** account
+2. Go to `/register?type=hospital` → create a **hospital** account
+
+### Test Flows
+- **Donor:** Register for module → See nearby requests → Respond
+- **Hospital:** Post request → Find matches → Coordinate pickup
+
+### API Testing
+```bash
+# Health check
+curl https://omnimatch-backend.onrender.com/
+
+# Get milk donors
+curl https://omnimatch-backend.onrender.com/milk/donors
+
+# Local health check
+curl http://localhost:8001/
+```
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch:
+   ```bash
+   git checkout -b feature/your-feature
+   ```
+3. Commit your changes:
+   ```bash
+   git commit -m "feat: add your feature"
+   ```
+4. Push to your branch:
+   ```bash
+   git push origin feature/your-feature
+   ```
+5. Open a Pull Request
+
+### Module Ownership
+- Each module (BloodBridge, PlateletAlert, ThalCare, MilkBridge) can be developed independently
+- MilkBridge components are in `FRONTEND/src/components/milk/`
+- Keep module-specific code in module-owned files to avoid conflicts
+
+---
+
+## 📄 License
+
+MIT License — see [LICENSE](./LICENSE)
+
+---
+
+## 🙏 Acknowledgements
+
+Built with purpose for every donor who said yes, and every patient still waiting.
+
+
+---
+
+<div align="center">
+
+**OmniMatch** · *Because the right match shouldn't be a miracle. It should be a system.*
+
+[![Frontend](https://img.shields.io/badge/🌐%20Visit%20App-omnimatch.onrender.com-brightgreen?style=flat-square)](https://omnimatch.onrender.com)
+[![API](https://img.shields.io/badge/⚙️%20API-omnimatch--backend.onrender.com-blue?style=flat-square)](https://omnimatch-backend.onrender.com)
+
+</div>
