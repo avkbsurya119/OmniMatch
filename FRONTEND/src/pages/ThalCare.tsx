@@ -698,3 +698,518 @@ function DonorAssignments({ onRefresh }: { onRefresh: () => void }) {
                   You've confirmed this assignment. The hospital will contact you for scheduling.
                 </div>
                 {a.hospital_contact && (
+                  <a href={`tel:${a.hospital_contact}`} className="w-full">
+                    <Button 
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-body text-xs rounded-lg flex items-center justify-center gap-2"
+                    >
+                      📞 Call Hospital ({a.hospital_contact})
+                    </Button>
+                  </a>
+                )}
+              </div>
+            )}
+          </motion.div>
+        ))
+      )}
+    </div>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+export default function ThalCare() {
+  const { role, userName, profile } = useAuth();
+  const userId = getCurrentUserId();
+  const currentRole = getCurrentRole();
+  const isHospital = currentRole === "hospital";
+  const isDonor = currentRole === "donor";
+
+  const [patients, setPatients] = useState<ThalPatientExt[]>([]);
+  const [calendar, setCalendar] = useState<CalendarDay[]>([]);
+  const [dashStats, setDashStats] = useState<ThalDashboardStats | null>(null);
+  const [loadingData, setLoadingData] = useState(true);
+  const [errorData, setErrorData] = useState(false);
+
+  // Nearby Donors Map state (hospital only)
+  const [mapDonors, setMapDonors] = useState<BloodDonor[]>([]);
+
+  const [showRegister, setShowRegister] = useState(false);
+  const [findDonorFor, setFindDonorFor] = useState<ThalPatientExt | null>(null);
+  const [markDoneFor, setMarkDoneFor] = useState<ThalPatientExt | null>(null);
+  const [historyFor, setHistoryFor] = useState<ThalPatientExt | null>(null);
+
+  // Filter state
+  const [filter, setFilter] = useState<"all" | "due_week" | "overdue" | "unmatched">("all");
+
+  function fetchData() {
+    setLoadingData(true);
+    setErrorData(false);
+    const hospitalParam = isHospital ? userId : undefined;
+
+    Promise.all([
+      apiFetch<ThalPatientExt[]>(`/thal/patients${hospitalParam ? `?hospital_id=${hospitalParam}` : ""}`),
+      api.thal.getCalendar(7),
+      isHospital ? api.thal.getDashboard(userId) : Promise.resolve(null),
+    ])
+      .then(([p, c, d]) => {
+        setPatients(p);
+        setCalendar(c);
+        if (d) setDashStats(d);
+      })
+      .catch(() => setErrorData(true))
+      .finally(() => setLoadingData(false));
+  }
+
+  useEffect(() => { fetchData(); }, []);
+
+  // ── Fetch blood-type donors for Nearby Donors Map (hospital only) ──
+  useEffect(() => {
+    if (!isHospital) return;
+    api.blood.getDonors({ limit: 50 }).then((donors) => {
+      setMapDonors(donors as BloodDonor[]);
+    }).catch(() => {});
+  }, [isHospital]);
+
+  // Map data — identical logic to BloodBridge
+  const mapDonorPins = mapDonors.map(d => ({
+    id:           d.id,
+    name:         d.name,
+    blood_group:  d.group,
+    city:         d.city,
+    trust_score:  d.trust_score,
+    distance_km:  d.distance_km || 0,
+    lat:          (d as any).lat ?? 0,
+    lng:          (d as any).lng ?? 0,
+  }));
+
+  const hospitalLocation = isHospital && profile?.lat && profile?.lng
+    ? { lat: profile.lat, lng: profile.lng, name: userName || "Your Hospital" }
+    : null;
+
+  // Compute filtered patients
+  const filteredPatients = patients.filter(p => {
+    if (filter === "due_week") return p.needs_match_now || (p.days_until !== null && p.days_until <= 7);
+    if (filter === "overdue") return p.days_until !== null && p.days_until < 0;
+    if (filter === "unmatched") return p.donor === "Unmatched" && p.needs_match_now;
+    return true;
+  });
+
+  const urgentCount = patients.filter(p => p.is_urgent).length;
+  const needMatch = patients.filter(p => p.needs_match_now && p.donor === "Unmatched").length;
+  const criticalCount = patients.filter(p => p.is_critical).length;
+
+  const now = new Date();
+  const monthLabel = now.toLocaleString("en-US", { month: "short", year: "numeric" });
+
+  // ── Skeleton ──
+  const PatientSkeleton = () => (
+    <div className="rounded-2xl border-2 border-thal/20 bg-card p-5 shadow-card space-y-4">
+      <div className="flex items-center gap-3">
+        <Skeleton className="w-12 h-12 rounded-2xl" />
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-3 w-40" />
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-4 pt-4 border-t border-border">
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-8 w-full" />
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Navbar />
+      <div className="pt-16">
+        {/* Hero */}
+        <div className="bg-gradient-to-br from-thal/90 to-thal/50 text-primary-foreground py-16 px-4">
+          <div className="container mx-auto">
+            <Link
+              to="/dashboard"
+              className="inline-flex items-center gap-1.5 text-primary-foreground/70 hover:text-primary-foreground font-body text-sm mb-6 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back
+            </Link>
+            <div className="flex items-center gap-4 mb-4">
+              <div className="text-6xl">💉</div>
+              <div>
+                <h1 className="font-display text-5xl font-black">ThalCare</h1>
+                <p className="font-body text-primary-foreground/70 text-lg">
+                  Recurring transfusion support for Thalassemia patients
+                </p>
+              </div>
+            </div>
+
+            {/* Stats bar — different for hospital vs donor */}
+            {isHospital && dashStats ? (
+              <div className="flex gap-4 mt-6 flex-wrap">
+                {[
+                  { label: "Active Patients", value: dashStats.total_active, active: filter === "all", key: "all" as const },
+                  { label: "Due This Week", value: dashStats.due_this_week, active: filter === "due_week", key: "due_week" as const },
+                  { label: "Overdue", value: dashStats.overdue, active: filter === "overdue", key: "overdue" as const },
+                  { label: "Unmatched", value: dashStats.unmatched, active: filter === "unmatched", key: "unmatched" as const },
+                ].map(({ label, value, active, key }) => (
+                  <button
+                    key={key}
+                    onClick={() => setFilter(key)}
+                    className={`glass rounded-xl px-5 py-3 text-left transition-all ${active ? "ring-2 ring-white/40 scale-105" : "opacity-80 hover:opacity-100"}`}
+                  >
+                    <div className="font-display text-2xl font-bold">{value}</div>
+                    <div className="font-body text-xs text-primary-foreground/70">{label}</div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="flex gap-6 mt-6 flex-wrap">
+                {[
+                  { label: "Active Patients", value: patients.length || "—" },
+                  { label: "Urgent (≤2 days)", value: urgentCount || "—" },
+                  { label: "Need Donor Now", value: needMatch || "—" },
+                ].map(({ label, value }) => (
+                  <div key={label} className="glass rounded-xl px-5 py-3">
+                    <div className="font-display text-2xl font-bold">{value}</div>
+                    <div className="font-body text-xs text-primary-foreground/70">{label}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="container mx-auto px-4 py-10">
+          {/* ── Donor Assignments (donor-only view) ── */}
+          {isDonor && <DonorAssignments onRefresh={fetchData} />}
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+            {/* ── Sidebar: Calendar + Register ── */}
+            <div className="space-y-5">
+              {/* Calendar */}
+              <div className="rounded-2xl border-2 border-thal/20 bg-card p-5 shadow-card">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-display text-base font-bold text-foreground flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-thal" /> Transfusion Calendar
+                  </h3>
+                  <span className="font-body text-xs text-muted-foreground">{monthLabel}</span>
+                </div>
+
+                {loadingData ? (
+                  <div className="grid grid-cols-7 gap-1.5">
+                    {Array.from({ length: 7 }).map((_, i) => (
+                      <Skeleton key={i} className="h-14 rounded-lg" />
+                    ))}
+                  </div>
+                ) : calendar.length === 0 ? (
+                  <div className="text-center py-4">
+                    <p className="font-body text-xs text-muted-foreground">No calendar data.</p>
+                    <Button variant="ghost" size="sm" className="mt-1 text-thal font-body text-xs" onClick={fetchData}>
+                      <RefreshCw className="w-3 h-3 mr-1" /> Retry
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-7 gap-1.5">
+                      {calendar.map((d) => (
+                        <div
+                          key={d.day + d.date}
+                          className={`rounded-lg p-1.5 text-center transition-all ${d.has ? "bg-thal/15 border-2 border-thal/30" : "bg-muted/50"
+                            }`}
+                        >
+                          <div className="font-body text-xs text-muted-foreground">{d.day}</div>
+                          <div className={`font-display font-bold text-sm ${d.has ? "text-thal" : "text-foreground"}`}>
+                            {d.date}
+                          </div>
+                          {d.has && <div className="w-1.5 h-1.5 rounded-full bg-thal mx-auto mt-0.5" />}
+                        </div>
+                      ))}
+                    </div>
+                    {calendar.filter(d => d.has).map(d => (
+                      <div key={d.date} className="mt-3 p-2.5 rounded-lg bg-thal/8 border border-thal/20">
+                        <span className="font-body text-xs font-semibold text-thal">
+                          {d.day} {d.date}: {d.label}
+                        </span>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+
+              {/* Register Patient — hospital only */}
+              {isHospital && (
+                <div className="rounded-2xl border-2 border-thal/20 bg-thal/5 p-5">
+                  <h3 className="font-display text-base font-bold mb-2">Add Patient</h3>
+                  <p className="font-body text-xs text-muted-foreground mb-3">
+                    Register a Thalassemia patient and find a dedicated recurring donor.
+                  </p>
+                  <Button
+                    onClick={() => setShowRegister(true)}
+                    className="w-full bg-thal text-primary-foreground font-body font-bold rounded-xl"
+                  >
+                    <Plus className="w-4 h-4 mr-1.5" /> Register Patient
+                  </Button>
+                </div>
+              )}
+
+              {/* Donor info card — donor only */}
+              {isDonor && (
+                <div className="rounded-2xl border-2 border-thal/20 bg-thal/5 p-5">
+                  <h3 className="font-display text-base font-bold mb-2 flex items-center gap-2">
+                    <Heart className="w-5 h-5 text-thal" /> About ThalCare
+                  </h3>
+                  <p className="font-body text-xs text-muted-foreground mb-2">
+                    Thalassemia patients need regular blood transfusions every 2-4 weeks for life.
+                    As a donor, you help ensure no patient misses a critical transfusion.
+                  </p>
+                  <div className="bg-thal/8 border border-thal/20 rounded-xl px-4 py-2 font-body text-xs text-thal mt-2">
+                    <strong>No-repeat rule:</strong> Each donor only donates once per patient to ensure donor diversity and safety.
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Patient List ── */}
+            <div className="lg:col-span-2">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-display text-xl font-bold text-foreground flex items-center gap-2">
+                  <Users className="w-5 h-5 text-thal" />
+                  {isHospital ? "Your Patients" : "Active Patients"}
+                  {filter !== "all" && (
+                    <Badge className="ml-2 bg-thal/15 text-thal font-body text-[10px] border-0">
+                      {filter === "due_week" ? "Due This Week" : filter === "overdue" ? "Overdue" : "Unmatched"}
+                    </Badge>
+                  )}
+                </h3>
+                <div className="flex items-center gap-2">
+                  {filter !== "all" && (
+                    <Button variant="ghost" size="sm" onClick={() => setFilter("all")} className="text-thal font-body text-xs">
+                      Show All
+                    </Button>
+                  )}
+                  {errorData && (
+                    <Button variant="ghost" size="sm" onClick={fetchData} className="text-thal font-body text-xs">
+                      <RefreshCw className="w-3 h-3 mr-1" /> Retry
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {loadingData ? (
+                  Array.from({ length: 3 }).map((_, i) => <PatientSkeleton key={i} />)
+                ) : filteredPatients.length === 0 ? (
+                  <div className="text-center py-10 rounded-xl border-2 border-dashed border-border">
+                    <Calendar className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-40" />
+                    <p className="font-body text-sm text-muted-foreground">
+                      {filter !== "all" ? "No patients match this filter." : "No patients registered yet."}
+                    </p>
+                    {isHospital && filter === "all" && (
+                      <Button
+                        variant="ghost" size="sm"
+                        className="mt-3 text-thal font-body"
+                        onClick={() => setShowRegister(true)}
+                      >
+                        <Plus className="w-3 h-3 mr-1" /> Register the first patient
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  filteredPatients.map((p, i) => (
+                    <motion.div
+                      key={p.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.07 }}
+                      className={`rounded-2xl border-2 bg-card p-5 shadow-card transition-all ${p.is_critical
+                          ? "border-blood/50 shadow-blood/15 animate-pulse"
+                          : p.is_urgent
+                            ? "border-blood/40 shadow-blood/10"
+                            : p.needs_match_now
+                              ? "border-amber-400/40"
+                              : "border-thal/20"
+                        }`}
+                    >
+                      {/* Critical banner */}
+                      {p.is_critical && (
+                        <div className="mb-3 bg-blood/10 border border-blood/30 rounded-xl px-4 py-2 text-blood font-body text-xs flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 shrink-0 animate-pulse" />
+                          <strong>CRITICAL</strong> — Overdue & no donor assigned. Immediate attention needed!
+                        </div>
+                      )}
+
+                      {/* Header */}
+                      <div className="flex items-start justify-between flex-wrap gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-2xl bg-thal/10 flex items-center justify-center text-xl font-display font-bold text-thal">
+                            {p.age != null ? `${p.age}y` : "—"}
+                          </div>
+                          <div>
+                            <div className="font-body font-bold text-foreground">{p.name}</div>
+                            <div className="font-body text-xs text-muted-foreground">{p.hospital}</div>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <Badge
+                            className={`font-body text-xs border-0 ${p.is_urgent
+                                ? "bg-blood/15 text-blood"
+                                : p.needs_match_now
+                                  ? "bg-amber-500/15 text-amber-600"
+                                  : "bg-thal/15 text-thal"
+                              }`}
+                          >
+                            <Clock className="w-3 h-3 mr-1" /> {p.countdown}
+                          </Badge>
+                          {p.needs_match_now && (
+                            <span className="font-body text-[10px] text-amber-600 font-semibold">
+                              ⚡ Match window open
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Details grid */}
+                      <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-border">
+                        <div>
+                          <div className="font-body text-xs text-muted-foreground">Blood Group</div>
+                          <div className="font-display font-bold text-blood text-sm">{p.group}</div>
+                        </div>
+                        <div>
+                          <div className="font-body text-xs text-muted-foreground flex items-center gap-1">
+                            Frequency
+                            {p.prediction?.method === "adaptive" && (
+                              <span className="text-[10px] text-thal bg-thal/10 px-1.5 py-0.5 rounded-md flex items-center" title={`AI Predicted: ${p.prediction.predicted_days} days\nConfidence: ${Math.round(p.prediction.confidence * 100)}%\nTrend: ${p.prediction.trend_detail}`}>
+                                <Activity className="w-3 h-3 mr-1" /> Auto
+                              </span>
+                            )}
+                          </div>
+                          <div className="font-body font-semibold text-xs text-foreground">
+                            {p.prediction?.method === "adaptive" ? `~Every ${p.prediction.predicted_days} days` : p.freq}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="font-body text-xs text-muted-foreground">Dedicated Donor</div>
+                          <DonorStatusBadge status={p.donor_status} name={p.donor} />
+                        </div>
+                      </div>
+
+                      {/* Next date */}
+                      <div className="mt-3 font-body text-xs text-muted-foreground flex items-center gap-2">
+                        <span>Next transfusion: <span className="text-foreground font-semibold">{p.nextDate}</span></span>
+                        {p.prediction?.method === "adaptive" && (
+                          <Badge className="bg-thal/10 text-thal font-body text-[10px] border-0">
+                            {Math.round(p.prediction.confidence * 100)}% Confidence
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex gap-2 mt-4 flex-wrap">
+                        {/* History — always visible */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setHistoryFor(p)}
+                          className="border-thal/30 text-thal font-body text-xs rounded-lg hover:bg-thal/10"
+                        >
+                          <History className="w-3 h-3 mr-1" /> History
+                        </Button>
+
+                        {/* Hospital-only actions */}
+                        {isHospital && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setMarkDoneFor(p)}
+                              className="flex-1 border-thal text-thal font-body text-xs rounded-lg hover:bg-thal hover:text-primary-foreground"
+                            >
+                              <CheckCircle className="w-3 h-3 mr-1" /> Mark Done
+                            </Button>
+
+                            {(p.donor === "Unmatched" || p.needs_match_now) && (
+                              <Button
+                                size="sm"
+                                onClick={() => setFindDonorFor(p)}
+                                className="flex-1 bg-thal text-primary-foreground font-body text-xs rounded-lg"
+                              >
+                                Find Donor <ChevronRight className="w-3 h-3 ml-1" />
+                              </Button>
+                            )}
+
+                            {p.donor_status === "accepted" && p.donor_mobile && (
+                              <a href={`tel:${p.donor_mobile}`} className="w-full mt-2">
+                                <Button 
+                                  size="sm"
+                                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-body text-xs rounded-lg flex items-center justify-center gap-2"
+                                >
+                                  📞 Call Assigned Donor ({p.donor_mobile})
+                                </Button>
+                              </a>
+                            )}
+                          </>
+                        )}
+                      </div>
+
+                      {/* No-repeat info */}
+                      {p.past_donor_ids.length > 0 && (
+                        <div className="mt-2 font-body text-[10px] text-muted-foreground">
+                          🔒 {p.past_donor_ids.length} donor(s) already used — excluded from future matches
+                        </div>
+                      )}
+                    </motion.div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Nearby Donors Map (hospital only) ── */}
+          {isHospital && (
+            <div className="mt-10">
+              <h3 className="font-display text-xl font-bold mb-4 flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-thal" /> Nearby Blood Donors
+              </h3>
+              <p className="font-body text-sm text-muted-foreground mb-4">
+                Blood-eligible donors near your hospital — click a pin to view details.
+              </p>
+              <div className="rounded-2xl border-2 border-thal/20 bg-card shadow-card overflow-hidden">
+                <BloodBridgeMap donors={mapDonorPins} hospitalLocation={hospitalLocation} />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      <Footer />
+
+      {/* Modals */}
+      <AnimatePresence>
+        {showRegister && (
+          <RegisterModal
+            onClose={() => setShowRegister(false)}
+            onSuccess={fetchData}
+          />
+        )}
+        {findDonorFor && (
+          <FindDonorModal
+            patient={findDonorFor}
+            onClose={() => setFindDonorFor(null)}
+            onAssigned={fetchData}
+          />
+        )}
+        {markDoneFor && (
+          <MarkDoneModal
+            patient={markDoneFor}
+            onClose={() => setMarkDoneFor(null)}
+            onDone={fetchData}
+          />
+        )}
+        {historyFor && (
+          <HistoryModal
+            patient={historyFor}
+            onClose={() => setHistoryFor(null)}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
