@@ -194,3 +194,110 @@ def _try_stream(messages_payload, models_to_try):
             logger.info(f"Trying model: {model_name}")
             stream = client.chat.completions.create(
                 model=model_name,
+                messages=messages_payload,
+                temperature=0.7,
+                max_tokens=2048,
+                stream=True,
+            )
+
+            # Eagerly pull the first real token to surface auth / quota errors early
+            first_text = None
+            for chunk in stream:
+                delta = chunk.choices[0].delta
+                if delta and delta.content:
+                    first_text = delta.content
+                    break
+
+            def _generate():
+                if first_text:
+                    yield first_text
+                try:
+                    for chunk in stream:
+                        delta = chunk.choices[0].delta
+                        if delta and delta.content:
+                            yield delta.content
+                except Exception as e:
+                    logger.error(f"Stream error mid-response: {e}")
+                    yield "\n\n⚠️ Stream interrupted. Please try again."
+
+            return _generate(), None
+
+        except Exception as e:
+            error_str = str(e)
+            logger.warning(f"Model {model_name} failed: {error_str}")
+            last_error = error_str
+            if "429" in error_str or "rate_limit" in error_str.lower():
+                continue
+            break
+
+    return None, last_error
+
+
+# ── POST /ai/chat (streaming) ────────────────────────────────────────────────
+
+@router.post("/chat")
+def ai_chat(body: ChatRequest):
+    if not client:
+        raise HTTPException(
+            status_code=503,
+            detail="AI service not configured. Set GROQ_API_KEY in your .env file."
+        )
+
+    messages_payload = _build_messages(body.messages)
+    models_to_try = [MODEL] + FALLBACK_MODELS
+
+    stream_gen, error = _try_stream(messages_payload, models_to_try)
+
+    if error:
+        if "429" in error or "rate_limit" in error.lower():
+            raise HTTPException(
+                status_code=429,
+                detail="AI rate limit reached. Please wait a moment and try again."
+            )
+        raise HTTPException(status_code=502, detail=f"AI service error: {error}")
+
+    if not stream_gen:
+        raise HTTPException(status_code=502, detail="No response from AI service.")
+
+    return StreamingResponse(
+        stream_gen,
+        media_type="text/plain",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ── POST /ai/chat/sync (non-streaming fallback) ──────────────────────────────
+
+@router.post("/chat/sync")
+def ai_chat_sync(body: ChatRequest):
+    """Non-streaming version for simpler clients."""
+    if not client:
+        raise HTTPException(
+            status_code=503,
+            detail="AI service not configured. Set GROQ_API_KEY in your .env file."
+        )
+
+    messages_payload = _build_messages(body.messages)
+    models_to_try = [MODEL] + FALLBACK_MODELS
+    last_error = None
+
+    for model_name in models_to_try:
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=messages_payload,
+                temperature=0.7,
+                max_tokens=2048,
+                stream=False,
+            )
+            return {"reply": response.choices[0].message.content}
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(f"Sync model {model_name} failed: {last_error}")
+            if "429" in last_error or "rate_limit" in last_error.lower():
+                continue
+            break
+
+    if "429" in (last_error or "") or "rate_limit" in (last_error or "").lower():
+        raise HTTPException(status_code=429, detail="AI rate limit reached. Please wait and try again.")
+    raise HTTPException(status_code=502, detail=f"AI service error: {last_error}")
