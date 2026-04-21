@@ -219,3 +219,142 @@ export default function OmniMatchAI() {
                 });
                 setLoading(false);
             }
+        );
+    };
+
+    return (
+        <div className="min-h-screen bg-background flex flex-col items-center font-body text-foreground pb-10">
+            {/* Header Area */}
+            <div className="w-full bg-background/80 backdrop-blur-md sticky top-0 z-10 border-b border-border">
+                <div className="max-w-4xl mx-auto px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                        <Link to="/" className="p-2 hover:bg-muted rounded-full transition-colors mr-2">
+                            <ArrowLeft size={20} />
+                        </Link>
+                        <div className="w-11 h-11 rounded-full bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center text-white shadow-lg shadow-primary/20 shrink-0">
+                            <Heart size={24} fill="currentColor" />
+                        </div>
+                        <div>
+                            <h1 className="font-display font-bold text-xl leading-none">OmniMatch AI</h1>
+                            <p className="text-[10px] text-primary uppercase tracking-[0.2em] font-bold mt-1">
+                                Donor Intelligence Companion
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={clearChat}
+                            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground bg-muted/50 hover:bg-muted rounded-full px-3 py-1.5 transition-all"
+                            title="New conversation"
+                        >
+                            <RotateCcw size={12} />
+                            New Chat
+                        </button>
+                        <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-4 py-1.5">
+                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                <Sparkles size={12} className="inline mr-1" />AI Powered
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Warning Banner */}
+            <div className="w-full max-w-4xl px-6 mt-6">
+                <div className="bg-rose-500/5 border border-rose-500/20 rounded-xl p-3 flex items-start gap-3 text-[11px] sm:text-xs text-muted-foreground leading-relaxed">
+                    <span className="text-base shrink-0">🚨</span>
+                    <p>
+                        <strong className="text-primary font-bold">Medical Emergency?</strong> Call <span className="text-primary font-bold">108</span> immediately. This AI provides informational guidance only and is not a substitute for professional medical advice, diagnosis, or treatment.
+                    </p>
+                </div>
+            </div>
+
+            {/* Main Chat Container */}
+            <div className="w-full max-w-4xl flex-1 flex flex-col gap-8 px-6 mt-8 overflow-hidden">
+
+                {/* Quick Help Section - Only visible when we have few messages */}
+                {messages.length < 3 && (
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {QUICK_PROMPTS.map((p, i) => (
+                            <button
+                                key={i}
+                                onClick={() => sendMessage(p.text)}
+                                className="bg-muted/30 hover:bg-muted/50 border border-border hover:border-primary/50 transition-all p-3 rounded-xl text-left flex flex-col gap-1 group"
+                            >
+                                <span className="text-base">{p.label.split(' ')[0]}</span>
+                                <span className="text-[11px] font-bold text-muted-foreground group-hover:text-primary transition-colors leading-tight">
+                                    {p.label.split(' ').slice(1).join(' ')}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                {/* Chat History */}
+                <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
+                    {messages.map((msg, i) => (
+                        <Message key={i} msg={msg} />
+                    ))}
+                    {loading && messages[messages.length - 1]?.content === "" && (
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center text-white shrink-0">
+                                <Heart size={18} fill="currentColor" />
+                            </div>
+                            <div className="bg-muted/30 border border-border rounded-2xl rounded-tl-none overflow-hidden shadow-sm">
+                                <TypingIndicator />
+                            </div>
+                        </div>
+                    )}
+                    <div ref={bottomRef} className="h-4" />
+                </div>
+
+                {/* Input Area Overlaying Chat */}
+                <div className="pt-4 pb-6 sticky bottom-0 bg-gradient-to-t from-background via-background to-transparent pt-10 px-1">
+                    <div className="relative group">
+                        <div className="absolute -inset-0.5 bg-gradient-to-r from-primary/20 to-primary-dark/20 rounded-2xl blur opacity-30 group-focus-within:opacity-100 transition duration-500"></div>
+                        <div className="relative flex items-end gap-3 bg-white dark:bg-muted/20 border-2 border-border focus-within:border-primary/50 rounded-2xl p-3 shadow-xl shadow-black/5 transition-all">
+                            <textarea
+                                value={input}
+                                onChange={e => setInput(e.target.value)}
+                                onKeyDown={e => {
+                                    if (e.key === "Enter" && !e.shiftKey) {
+                                        e.preventDefault();
+                                        sendMessage();
+                                    }
+                                }}
+                                placeholder="Ask about donation eligibility, compatibility, procedures..."
+                                rows={1}
+                                className="flex-1 bg-transparent border-none focus:ring-0 text-sm font-medium py-2.5 max-h-32 resize-none overflow-y-auto"
+                                onInput={e => {
+                                    const target = e.target as HTMLTextAreaElement;
+                                    target.style.height = "auto";
+                                    target.style.height = Math.min(target.scrollHeight, 128) + "px";
+                                }}
+                            />
+                            <button
+                                onClick={() => sendMessage()}
+                                disabled={!input.trim() || loading}
+                                className={`w-11 h-11 rounded-xl flex items-center justify-center text-white transition-all transform active:scale-95 ${input.trim() && !loading
+                                        ? "bg-gradient-to-br from-primary to-primary-dark shadow-lg shadow-primary/20"
+                                        : "bg-muted text-muted-foreground cursor-not-allowed"
+                                    }`}
+                            >
+                                {loading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} className="ml-0.5" />}
+                            </button>
+                        </div>
+                    </div>
+                    <div className="mt-3 flex justify-between items-center px-2">
+                        <span className="text-[10px] text-muted-foreground/60 flex items-center gap-1">
+                            <CheckCircle2 size={10} className="text-primary" /> Powered by Groq AI • India-wide donor intelligence
+                        </span>
+                        <span className="text-[10px] text-muted-foreground/60">
+                            Shift + Enter for new line
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
