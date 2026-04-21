@@ -75,3 +75,54 @@ export default function Footer() {
                     className="font-body text-sm text-primary-foreground/70 hover:text-accent transition-colors flex items-center gap-1.5"
                   >
                     <ExternalLink className="w-3 h-3" /> {label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Contact */}
+          <div>
+            <h4 className="font-display font-bold text-base mb-5">Contact</h4>
+            <ul className="space-y-4">
+              <li className="flex items-start gap-3">
+                <Phone className="w-4 h-4 mt-0.5 text-accent shrink-0" />
+                <div>
+                  <div className="font-body text-sm font-semibold">Emergency Helpline</div>
+                  <div className="font-body text-sm text-primary-foreground/70">1800-XXX-LIFE (24/7)</div>
+                </div>
+              </li>
+              <li className="flex items-start gap-3">
+                <Mail className="w-4 h-4 mt-0.5 text-accent shrink-0" />
+                <div>
+                  <div className="font-body text-sm font-semibold">Support</div>
+                  <div className="font-body text-sm text-primary-foreground/70">help@omnimatch.in</div>
+                </div>
+              </li>
+              <li className="flex items-start gap-3">
+                <MapPin className="w-4 h-4 mt-0.5 text-accent shrink-0" />
+                <div>
+                  <div className="font-body text-sm font-semibold">HQ</div>
+                  <div className="font-body text-sm text-primary-foreground/70">Bengaluru, Karnataka, India</div>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="mt-12 pt-8 border-t border-primary-foreground/10 flex flex-col md:flex-row items-center justify-between gap-4">
+          <p className="font-body text-sm text-primary-foreground/50">
+            © 2025 OmniMatch. All rights reserved. Made with ❤️ in India.
+          </p>
+          <div className="flex gap-6">
+            {["Privacy Policy", "Terms of Service", "DPDP Compliance"].map((link) => (
+              <a key={link} href="#" className="font-body text-sm text-primary-foreground/50 hover:text-accent transition-colors">
+                {link}
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+    </footer>
+  );
+}
