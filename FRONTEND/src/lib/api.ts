@@ -408,3 +408,351 @@ export const api = {
 
         getDonorHistory: (donorId: string) =>
             get("/blood/history/donor", { donor_id: donorId }),
+
+        fulfillRequest: (requestId: string, hospitalId: string) =>
+            req("POST", `/blood/requests/${requestId}/fulfill`, undefined, { hospital_id: hospitalId }),
+
+        closeRequest: (requestId: string, hospitalId: string) =>
+            req("POST", `/blood/requests/${requestId}/close`, undefined, { hospital_id: hospitalId }),
+
+        getShortage: () =>
+            get<BloodShortage[]>("/blood/shortage"),
+    },
+
+
+    // ── ThalCare ────────────────────────────────────────────────────────────────
+
+    thal: {
+        getPatients: (hospitalId?: string) =>
+            get<ThalPatient[]>("/thal/patients", hospitalId ? { hospital_id: hospitalId } : undefined),
+
+        getCalendar: (daysAhead = 7) =>
+            get<CalendarDay[]>("/thal/calendar", { days_ahead: daysAhead }),
+
+        registerPatient: (body: { name: string; blood_group: string; hospital_id?: string; transfusion_frequency_days?: number; last_transfusion_date?: string }) =>
+            post("/thal/patients", body),
+
+        markDone: (patientId: string, transfusionDate: string) =>
+            post("/thal/transfusion-done", { patient_id: patientId, transfusion_date: transfusionDate }),
+
+        assignDonor: (body: { patient_id: string; donor_id: string }) =>
+            post<{ success: boolean; match_id: string; message: string }>("/thal/assign-donor", body),
+
+        getDonorAssignments: (donorId: string) =>
+            get<ThalAssignment[]>(`/thal/donor/${donorId}/assignments`),
+
+        respond: (body: { match_id: string; donor_id: string; action: "accept" | "decline" }) =>
+            post<{ success: boolean; status: string; message: string }>("/thal/respond", body),
+
+        getPatientHistory: (patientId: string) =>
+            get<ThalPatientHistory>(`/thal/patients/${patientId}/history`),
+
+        getDashboard: (hospitalId?: string) =>
+            get<ThalDashboardStats>("/thal/dashboard", hospitalId ? { hospital_id: hospitalId } : undefined),
+    },
+
+
+    // ── PlateletAlert ───────────────────────────────────────────────────────────
+
+    platelet: {
+        getOpenRequests: (params?: {
+            user_id?: string;
+            urgency?: string;
+            blood_group?: string;
+        }) => {
+            const qs = new URLSearchParams();
+            if (params?.user_id) qs.set("user_id", params.user_id);
+            if (params?.urgency) qs.set("urgency", params.urgency);
+            if (params?.blood_group) qs.set("blood_group", params.blood_group);
+            return get<PlateletRequest[]>(`/platelet/requests/open?${qs.toString()}`);
+        },
+
+        getDonors: (params?: { blood_group?: string; city?: string }) => {
+            const qs = new URLSearchParams();
+            if (params?.blood_group) qs.set("blood_group", params.blood_group);
+            if (params?.city) qs.set("city", params.city);
+            return get<PlateletDonor[]>(`/platelet/donors?${qs.toString()}`);
+        },
+
+        postRequest: (body: {
+            patient_name: string;
+            cancer_type?: string;
+            blood_group: string;
+            units: number;
+            urgency: string;
+            hospital_id: string;
+        }) => post<{ success: boolean; request_id: string }>("/platelet/requests", body),
+
+        createMatch: (body: { request_id: string; donor_id: string }) =>
+            post<{ success: boolean; match_id: string }>("/platelet/matches", body),
+
+        updateMatch: (matchId: string, body: { status: string; donor_id: string; appointment_time?: string; notes?: string; trust_rating?: number }) =>
+            patch<{ success: boolean; appointment_time?: string }>(`/platelet/matches/${matchId}`, body),
+
+        getDonorMatches: (donorId: string) =>
+            get<PlateletMatch[]>(`/platelet/matches/donor/${donorId}`),
+
+        getHospitalMatches: (hospitalId: string) =>
+            get<PlateletMatch[]>(`/platelet/matches/hospital/${hospitalId}`),
+
+        getDashboard: (params?: { user_id?: string }) =>
+            get<PlateletDashboard>(`/platelet/dashboard`, params),
+
+        triggerEscalation: (requestId: string) =>
+            post<{ success: boolean; alerted: number }>(`/platelet/escalate/${requestId}`),
+
+        requestDonor: (body: { hospital_id: string; donor_id: string; request_id: string; message?: string }) =>
+            post<{ success: boolean; match_id: string; message: string }>(`/platelet/request-donor`, body),
+    },
+
+    // ── MarrowMatch ─────────────────────────────────────────────────────────────
+
+    marrow: {
+        findMatches: (patientHla: string[], patientId?: string, minMatchPercent = 30) =>
+            post<{ patient_hla: string[]; total_found: number; matches: MarrowMatch[] }>(
+                "/marrow/match", { patient_hla: patientHla, patient_id: patientId, min_match_percent: minMatchPercent }
+            ),
+
+        contact: (body: { donor_id: string; patient_name?: string; urgency?: string; message?: string }) =>
+            post("/marrow/contact", body),
+
+        registerHla: (donorId: string, hlaType: string[]) =>
+            post("/marrow/register-hla", { donor_id: donorId, hla_type: hlaType }),
+
+        getDonors: () => get("/marrow/donors"),
+    },
+
+
+    // ── LastGift (Organs) ────────────────────────────────────────────────────────
+
+    organ: {
+        getViability: () =>
+            get<OrganViability[]>("/organ/viability"),
+
+        getRecipients: (params?: { organ_type?: string; blood_group?: string; donor_lat?: number; donor_lng?: number }) =>
+            get<OrganRecipient[]>("/organ/recipients", params),
+
+        createPledge: (body: { donor_id: string; organs: string[]; family_consent: boolean }) =>
+            post<{ pledge_id: string; pledge_id_short: string; organs_pledged: string[] }>("/organ/pledge", body),
+
+        postRequest: (body: { hospital_id: string; recipient_name: string; organ_needed: string; blood_group: string; urgency_score?: number }) =>
+            post("/organ/requests", body),
+    },
+
+
+    // ── MilkBridge ──────────────────────────────────────────────────────────────
+
+    milk: {
+        getDonors: (params?: {
+            pincode?: string;
+            city?: string;
+            screening_status?: string;
+            lat?: number;
+            lng?: number;
+            limit?: number;
+        }) => get<MilkDonor[]>("/milk/donors", params),
+
+        getDonorDetail: (milkDonorId: string) =>
+            get<MilkDonor>(`/milk/donors/${milkDonorId}`),
+
+        getBank: () =>
+            get<MilkBankRow[]>("/milk/bank"),
+
+        getShortageAlerts: () =>
+            get<MilkShortageAlert[]>("/milk/shortage-alerts"),
+
+        getOpenRequests: () =>
+            get<MilkShortageAlert[]>("/milk/requests/open"),
+
+        getRequestsForDonor: (donorId: string) =>
+            get<any[]>("/milk/requests/for-donor", { donor_id: donorId }),
+
+        registerDonor: (body: {
+            donor_id: string;
+            baby_age_months: number;
+            quantity_ml_per_day: number;
+            pickup_location?: string;
+            city?: string;
+            pincode?: string;
+            is_anonymous?: boolean;
+            availability_start?: string;
+            availability_end?: string;
+        }) => post<{ success: boolean; milk_donor_id: string; message: string }>("/milk/register-donor", body),
+
+        updateDonor: (milkDonorId: string, body: {
+            is_available?: boolean;
+            quantity_ml_per_day?: number;
+            baby_age_months?: number;
+            is_anonymous?: boolean;
+        }) => patch<{ success: boolean; message: string }>(`/milk/donors/${milkDonorId}`, body),
+
+        postRequest: (body: {
+            hospital_id: string;
+            infant_name?: string;
+            daily_quantity_ml: number;
+            urgency?: string;
+            pincode?: string;
+        }) => post<{ success: boolean; request_id: string; donors_notified: number; sms_sent: number; message: string }>("/milk/requests", body),
+
+        // Smart matching
+        findMatches: (body: {
+            request_id: string;
+            max_distance_km?: number;
+            min_quantity_ml?: number;
+            limit?: number;
+        }) => post<MilkMatchResult>("/milk/match", body),
+
+        createMatch: (body: { request_id: string; donor_id: string; milk_donor_id?: string }) =>
+            post<{ success: boolean; match_id: string; message: string }>("/milk/matches", body),
+
+        respondToMatch: (matchId: string, body: { donor_id: string; status: "accepted" | "declined" }) =>
+            post<{ success: boolean; status: string; message: string }>(`/milk/matches/${matchId}/respond`, body),
+
+        getDonorMatches: (donorId: string) =>
+            get<any[]>(`/milk/matches/donor/${donorId}`),
+
+        updateMatchStatus: (matchId: string, body: {
+            status: string;
+            pickup_date?: string;
+            pickup_time?: string;
+        }) => patch<{ success: boolean; message: string }>(`/milk/matches/${matchId}`, body),
+
+        // Donation tracking (Milk Passport)
+        createDonation: (body: {
+            donor_id: string;
+            request_id?: string;
+            collection_date: string;
+            volume_ml: number;
+            pasteurized?: boolean;
+            pasteurization_date?: string;
+            pasteurization_method?: string;
+            receiving_hospital_id?: string;
+            receiving_infant_ref?: string;
+            notes?: string;
+        }) => post<{ success: boolean; passport_id: string; donation_id: string; expiry_date: string; message: string }>("/milk/donations", body),
+
+        // logDonation is an alias for createDonation (used by MilkBridge.tsx)
+        logDonation: (body: {
+            donor_id: string;
+            request_id?: string;
+            collection_date: string;
+            volume_ml: number;
+            pasteurized?: boolean;
+            pasteurization_date?: string;
+            pasteurization_method?: string;
+            receiving_hospital_id?: string;
+            receiving_infant_ref?: string;
+            notes?: string;
+        }) => post<{ success: boolean; passport_id: string; donation_id: string; expiry_date: string; message: string }>("/milk/donations", body),
+
+        getDonation: (passportId: string) =>
+            get<MilkDonation>(`/milk/donations/${passportId}`),
+
+        getHospitalDashboard: (hospitalId: string) =>
+            get<MilkHospitalDashboard>(`/milk/dashboard/hospital/${hospitalId}`),
+    },
+
+
+    // ── Dashboard ───────────────────────────────────────────────────────────────
+
+    dashboard: {
+        getDonor: (donorId: string) =>
+            get<DonorDashboard>(`/dashboard/donor/${donorId}`),
+
+        getHospital: (hospitalId: string) =>
+            get(`/dashboard/hospital/${hospitalId}`),
+
+        getAdmin: () =>
+            get<AdminDashboard>("/dashboard/admin"),
+
+        verify: (entityType: "donor" | "hospital", entityId: string, approved: boolean) =>
+            post("/dashboard/admin/verify", { entity_type: entityType, entity_id: entityId, approved }),
+    },
+
+};
+
+
+// ── Convenience helpers ───────────────────────────────────────────────────────
+
+export const getCurrentUserId = () => {
+    return localStorage.getItem("lfc_user_id") || localStorage.getItem("lf_user_id") || "";
+};
+
+export const getCurrentRole = () => {
+    return localStorage.getItem("lfc_role") || localStorage.getItem("lf_role") || "donor";
+};
+
+export const isLoggedIn = () => {
+    return !!(localStorage.getItem("lfc_token") || localStorage.getItem("lf_token"));
+};
+
+
+// ── AI Chat ─────────────────────────────────────────────────────────────────
+
+export interface AIChatMessage {
+    role: "user" | "assistant";
+    content: string;
+}
+
+/**
+ * Stream a response from OmniMatch AI.
+ */
+export async function streamAIChat(
+    messages: AIChatMessage[],
+    isUrgent = false,
+    onChunk: (text: string) => void,
+    onDone: () => void,
+    onError: (err: string) => void,
+) {
+    const url = `${BASE}/ai/chat`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    try {
+        const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                messages: messages.map(m => ({ role: m.role, content: m.content })),
+                is_urgent: isUrgent,
+            }),
+            signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ detail: res.statusText }));
+            const detail = err.detail ?? "AI service error";
+            if (res.status === 429) {
+                onError("Rate limit reached. Please wait a moment and try again.");
+            } else {
+                onError(detail);
+            }
+            return;
+        }
+
+        const reader = res.body?.getReader();
+        if (!reader) {
+            onError("Streaming not supported");
+            return;
+        }
+
+        const decoder = new TextDecoder();
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const text = decoder.decode(value, { stream: true });
+            onChunk(text);
+        }
+        onDone();
+    } catch (err: any) {
+        clearTimeout(timeout);
+        if (err.name === "AbortError") {
+            onError("Request timed out. The AI service may be busy — please try again.");
+        } else {
+            onError(err.message ?? "Failed to connect to AI service");
+        }
+    }
+}
