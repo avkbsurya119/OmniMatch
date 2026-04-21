@@ -5,12 +5,16 @@ Usage:
   python geocode_donors.py
 """
 
+import os
 import time
 import requests
 from supabase import create_client
 
-SUPABASE_URL = "https://rxvdtnsgsrzmcoenxxxt.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4dmR0bnNnc3J6bWNvZW54eHh0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTQ4MDg2OSwiZXhwIjoyMDg3MDU2ODY5fQ.pyfSaRI5YF8bLXQygyDaCIhyKzPL3vF1qe4IFmwWmog"
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_KEY environment variables must be set.")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
