@@ -85,3 +85,60 @@ export default function MilkMatchModal({
               ) : matches.length === 0 ? (
                 <div className="text-center py-12">
                   <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">No matching donors found in this area.</p>
+                  <p className="text-sm text-muted-foreground mt-2">Try expanding your search radius.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {matches.map((match) => (
+                    <div key={match.milk_donor_id} className="rounded-xl border p-4 hover:border-milk/40 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-xl bg-milk/10 flex items-center justify-center text-2xl">
+                            🤱
+                          </div>
+                          <div>
+                            <p className="font-display font-bold flex items-center gap-2">
+                              {match.name}
+                              {match.verified && <Sparkles size={14} className="text-amber-500" />}
+                            </p>
+                            <p className="font-body text-xs text-muted-foreground">
+                              {match.city} - {match.distance || "Same area"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-display text-lg font-bold text-milk">{match.quantity_ml}ml</div>
+                          <div className="font-body text-[10px] text-muted-foreground">daily</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between mt-4">
+                        <div className="flex gap-2">
+                          <Badge className="bg-secondary/10 text-secondary border-0 text-[10px]">
+                            {match.match_score}% match
+                          </Badge>
+                          {match.pincode_match && (
+                            <Badge className="bg-green-100 text-green-700 border-0 text-[10px]">
+                              Same pincode
+                            </Badge>
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          className="bg-milk text-foreground font-bold rounded-lg"
+                          onClick={() => handleCreateMatch(match)}
+                        >
+                          Request
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+}
