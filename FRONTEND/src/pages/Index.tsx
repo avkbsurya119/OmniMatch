@@ -213,3 +213,231 @@ export default function Index() {
           <div className="w-5 h-8 rounded-full border-2 border-primary-foreground/40 flex items-start justify-center p-1">
             <motion.div
               animate={{ y: [0, 10, 0] }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+              className="w-1 h-2 bg-primary-foreground/60 rounded-full"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* ── LIVE COUNTERS ── */}
+      <section className="py-16 bg-muted/30">
+        <div className="container mx-auto px-4">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-10"
+          >
+            <div className="inline-flex items-center gap-2 bg-primary/10 rounded-full px-4 py-1.5 mb-3">
+              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              <span className="font-body text-sm font-semibold text-primary">Live Platform Stats</span>
+            </div>
+            <h2 className="font-display text-3xl font-bold text-foreground">Real Impact. Real Time.</h2>
+          </motion.div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+            <LiveCounter icon="🩸" end={2847} label="Matches Today" suffix="+" color="text-blood" />
+            <LiveCounter icon="❤️" end={142650} label="Lives Impacted" suffix="+" color="text-primary" duration={2.5} />
+            <LiveCounter icon="🟢" end={18423} label="Active Donors Online" color="text-secondary" />
+            <LiveCounter icon="🏥" end={1284} label="Hospitals Connected" color="text-organ" />
+          </div>
+        </div>
+      </section>
+
+      {/* ── MODULE CARDS ── */}
+      <section className="py-20">
+        <div className="container mx-auto px-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-14"
+          >
+            <h2 className="font-display text-4xl md:text-5xl font-bold text-foreground mb-4">
+              Four Modules,{" "}
+              <span className="gradient-text">One Mission</span>
+            </h2>
+            <p className="font-body text-lg text-muted-foreground max-w-2xl mx-auto">
+              From emergency blood requests to neonatal milk banks — every life-saving need, covered by a dedicated intelligent module.
+            </p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6 max-w-5xl mx-auto">
+            {modules.map((mod, i) => (
+              <ModuleCard key={mod.name} {...mod} index={i} />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── HOW IT WORKS ── */}
+      <section className="py-20 bg-foreground relative overflow-hidden">
+        <div className="absolute inset-0 opacity-5">
+          <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-primary blur-3xl" />
+          <div className="absolute bottom-0 left-0 w-64 h-64 rounded-full bg-accent blur-3xl" />
+        </div>
+        <div className="container mx-auto px-4 relative">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
+            <h2 className="font-display text-4xl md:text-5xl font-bold text-primary-foreground mb-4">
+              How It <span className="gradient-text-amber">Works</span>
+            </h2>
+            <p className="font-body text-lg text-primary-foreground/60 max-w-xl mx-auto">
+              Three simple steps. Life-changing impact.
+            </p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
+            {/* Connector line */}
+            <div className="hidden md:block absolute top-16 left-1/4 right-1/4 h-0.5 bg-gradient-to-r from-primary via-secondary to-accent opacity-30" />
+
+            {steps.map((step, i) => (
+              <motion.div
+                key={step.step}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.15 }}
+                className="text-center"
+              >
+                <div className="relative inline-block mb-6">
+                  <div className="w-20 h-20 rounded-2xl glass flex items-center justify-center text-4xl mx-auto">
+                    {step.icon}
+                  </div>
+                  <div className={`absolute -top-2 -right-2 w-8 h-8 rounded-xl bg-gradient-primary flex items-center justify-center`}>
+                    <span className="font-body text-xs font-black text-primary-foreground">{step.step}</span>
+                  </div>
+                </div>
+                <h3 className={`font-display text-xl font-bold text-primary-foreground mb-3`}>{step.title}</h3>
+                <p className="font-body text-sm text-primary-foreground/60 leading-relaxed max-w-xs mx-auto">{step.description}</p>
+              </motion.div>
+            ))}
+          </div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mt-14"
+          >
+            <Link to="/register">
+              <Button
+                size="lg"
+                className="font-body font-bold text-base px-10 py-6 bg-gradient-primary text-primary-foreground shadow-primary-lg rounded-xl hover:opacity-90"
+              >
+                Start Saving Lives Today <ArrowRight className="w-5 h-5 ml-2" />
+              </Button>
+            </Link>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ── URGENCY BANNER ── */}
+      <section className="py-16 bg-primary/8">
+        <div className="container mx-auto px-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+            {[
+              { stat: "4.2 lakh", label: "Thalassemia patients in India", icon: "💉" },
+              { stat: "27 million", label: "Premature babies need donor milk", icon: "🍼" },
+              { stat: "2.3M", label: "Active blood donors", icon: "🩸" },
+              { stat: "48hr", label: "Average platelet match time", icon: "⏱️" },
+            ].map(({ stat, label, icon }) => (
+              <motion.div
+                key={label}
+                initial={{ opacity: 0, scale: 0.9 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true }}
+                className="p-5"
+              >
+                <div className="text-3xl mb-2">{icon}</div>
+                <div className="font-display text-2xl md:text-3xl font-black text-primary mb-1">{stat}</div>
+                <div className="font-body text-xs text-muted-foreground font-medium">{label}</div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── PARTNERS ── */}
+      <section className="py-16">
+        <div className="container mx-auto px-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            className="text-center mb-10"
+          >
+            <h3 className="font-body text-sm font-bold uppercase tracking-widest text-muted-foreground mb-2">
+              Trusted By
+            </h3>
+            <h2 className="font-display text-3xl font-bold text-foreground">India's Leading Healthcare Partners</h2>
+          </motion.div>
+
+          <div className="flex flex-wrap justify-center gap-4">
+            {partners.map((partner, i) => (
+              <motion.div
+                key={partner}
+                initial={{ opacity: 0, scale: 0.9 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.05 }}
+                className="px-6 py-3 rounded-xl border-2 border-border bg-card shadow-card font-body text-sm font-semibold text-foreground hover:border-primary hover:text-primary transition-all duration-200 cursor-pointer"
+              >
+                {partner}
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── CTA BANNER ── */}
+      <section className="py-20">
+        <div className="container mx-auto px-4">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="rounded-3xl bg-gradient-hero p-12 md:p-16 text-center relative overflow-hidden"
+          >
+            <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-accent/15 blur-3xl" />
+            <div className="absolute bottom-0 left-0 w-48 h-48 rounded-full bg-primary-foreground/5 blur-3xl" />
+            <div className="relative">
+              <div className="text-5xl mb-4">❤️</div>
+              <h2 className="font-display text-4xl md:text-5xl font-black text-primary-foreground mb-4">
+                Every Second Counts.
+              </h2>
+              <p className="font-body text-lg text-primary-foreground/80 max-w-xl mx-auto mb-8">
+                Join 12 lakh+ donors who have already made a difference. Your single act can save up to 8 lives.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Link to="/register">
+                  <Button
+                    size="lg"
+                    className="font-body font-bold text-base px-10 py-6 bg-primary-foreground text-primary hover:bg-primary-foreground/90 rounded-xl shadow-lg"
+                  >
+                    Register as Donor
+                  </Button>
+                </Link>
+                <Link to="/register?type=hospital">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="font-body font-bold text-base px-10 py-6 border-2 border-primary-foreground/50 text-primary-foreground hover:bg-primary-foreground/10 rounded-xl"
+                  >
+                    Register Hospital
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      <Footer />
+    </div>
+  );
+}
