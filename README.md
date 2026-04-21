@@ -6,22 +6,11 @@
 
 **Connecting Hospitals. Empowering Donors. Saving Lives.**
 
-[![Live Frontend](https://img.shields.io/badge/🌐%20Frontend-Live-brightgreen?style=for-the-badge)](https://omnimatch.onrender.com)
-[![Live Backend](https://img.shields.io/badge/⚙️%20Backend%20API-Live-blue?style=for-the-badge)](https://omnimatch-backend.onrender.com)
 [![Track](https://img.shields.io/badge/Track-Healthcare-red?style=for-the-badge)]()
 
 > *"The crisis isn't a shortage of donors. It's a complete absence of connection."*
 
 </div>
-
----
-
-## 🚀 Deployment
-
-| Service | URL | Status |
-|---|---|---|
-| 🌐 Frontend App | https://omnimatch.onrender.com | ✅ Live |
-| ⚙️ Backend API | https://omnimatch-backend.onrender.com | ✅ Live |
 
 ---
 
@@ -315,13 +304,10 @@ TWILIO_PHONE_NUMBER=your_twilio_number
 ### API Testing
 ```bash
 # Health check
-curl https://omnimatch-backend.onrender.com/
+curl http://localhost:8001/
 
 # Get milk donors
-curl https://omnimatch-backend.onrender.com/milk/donors
-
-# Local health check
-curl http://localhost:8001/
+curl http://localhost:8001/milk/donors
 ```
 
 ---
@@ -366,8 +352,5 @@ Built with purpose for every donor who said yes, and every patient still waiting
 <div align="center">
 
 **OmniMatch** · *Because the right match shouldn't be a miracle. It should be a system.*
-
-[![Frontend](https://img.shields.io/badge/🌐%20Visit%20App-omnimatch.onrender.com-brightgreen?style=flat-square)](https://omnimatch.onrender.com)
-[![API](https://img.shields.io/badge/⚙️%20API-omnimatch--backend.onrender.com-blue?style=flat-square)](https://omnimatch-backend.onrender.com)
 
 </div>
