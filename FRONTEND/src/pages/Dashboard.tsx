@@ -391,3 +391,333 @@ function HospitalDashboard() {
 
   useEffect(() => {
     const fetch = async () => {
+      setRemLoading(true);
+      try {
+        const [thal, platelet, organ] = await Promise.allSettled([
+          api.thal.getPatients(hospitalId || undefined),
+          api.platelet.getOpenRequests({ user_id: hospitalId || undefined }),
+        ]);
+        if (thal.status === "fulfilled") setThalPatients(thal.value.filter((p: any) => p.days_until !== null && p.days_until <= 7));
+        if (platelet.status === "fulfilled") setPlateletReqs(platelet.value.filter((p: any) => p.days_left <= 2));
+      } finally { setRemLoading(false); }
+    };
+    fetch();
+  }, [hospitalId]);
+
+  if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="w-10 h-10 animate-spin text-primary" /></div>;
+  if (error) return <div className="rounded-xl border-2 border-dashed border-border bg-card p-8 text-center"><p className="font-body text-muted-foreground mb-4">{error}</p><Button variant="outline" onClick={() => window.location.reload()}>Retry</Button></div>;
+
+  const h = data?.hospital; const stats = data?.stats;
+  const totalAlerts = thalPatients.length + plateletReqs.length;
+
+  return (
+    <div className="space-y-8">
+      <div className="rounded-2xl bg-gradient-hero p-6 text-primary-foreground relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-48 h-48 rounded-full bg-accent/10 blur-3xl" />
+        <div className="relative flex flex-col md:flex-row md:items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-primary-foreground/20 flex items-center justify-center text-3xl shrink-0">🏥</div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="font-display text-2xl font-bold">{h?.name || "Hospital Dashboard"}</h2>
+              {h?.is_verified ? <Badge className="bg-accent/20 text-accent border-0 font-body text-xs"><Shield className="w-3 h-3 mr-1" />Verified</Badge>
+                : <Badge className="bg-muted/40 text-primary-foreground/60 border-0 font-body text-xs">Verification Pending</Badge>}
+            </div>
+            <p className="font-body text-primary-foreground/70 text-sm mt-0.5">{h?.city}</p>
+          </div>
+          <Button onClick={() => navigate("/blood-bridge")} className="bg-primary-foreground text-primary font-body font-bold rounded-xl shrink-0"><Plus className="w-4 h-4 mr-2" />Post Blood Request</Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { icon: "📋", label: "Active Requests", value: stats?.active_requests || 0, color: "text-platelet" },
+          { icon: "✅", label: "Matched This Month", value: stats?.matched_this_month || 0, color: "text-secondary" },
+          { icon: "🩸", label: "Units Received", value: stats?.units_received || 0, color: "text-blood" },
+          { icon: "⏱️", label: "Avg Match Time", value: stats?.avg_match_time || "—", color: "text-organ" },
+        ].map(({ icon, label, value, color }) => (
+          <div key={label} className="rounded-xl bg-card border border-border p-4 shadow-card text-center">
+            <div className="text-2xl mb-1">{icon}</div>
+            <div className={`font-display text-2xl font-bold ${color}`}>{value}</div>
+            <div className="font-body text-xs text-muted-foreground">{label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-display text-lg font-bold text-foreground">Platform Modules</h3>
+          <span className="font-body text-xs text-muted-foreground">Click to open module</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {HOSPITAL_MODULES.map((mod, i) => (
+            <motion.div key={mod.name} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}>
+              <Link to={mod.path}>
+                <div className={`group rounded-xl border-2 bg-card p-5 cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 ${mod.accent}`}>
+                  <div className="flex items-start justify-between mb-3">
+                    <div className={`w-11 h-11 rounded-xl ${mod.icon_bg} flex items-center justify-center text-2xl`}>{mod.emoji}</div>
+                    <ArrowRight className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors mt-1" />
+                  </div>
+                  <div className="font-display font-bold text-base text-foreground mb-0.5">{mod.name}</div>
+                  <div className={`font-body text-xs font-semibold mb-2 ${mod.badge}`}>{mod.tagline}</div>
+                  <p className="font-body text-xs text-muted-foreground leading-relaxed">{mod.description}</p>
+                </div>
+              </Link>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-display text-lg font-bold text-foreground flex items-center gap-2"><AlertCircle className="w-5 h-5 text-primary" />Urgent Reminders</h3>
+          {totalAlerts > 0 && <Badge className="bg-primary/10 text-primary border-0 font-body text-xs animate-pulse">{totalAlerts} Alerts</Badge>}
+        </div>
+        {remLoading ? <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+          : totalAlerts === 0 ? (
+            <div className="p-8 text-center border-2 border-dashed rounded-2xl bg-muted/20">
+              <CheckCircle2 className="w-10 h-10 text-secondary mx-auto mb-3 opacity-40" />
+              <p className="text-muted-foreground font-body font-semibold">No urgent reminders right now.</p>
+              <p className="text-muted-foreground font-body text-xs mt-1">All patients and platelet requests are within safe windows.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {thalPatients.map((p: any, i: number) => (
+                <motion.div key={p.id || i} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
+                  className={`rounded-xl border-2 bg-card p-4 flex items-center gap-4 ${p.is_urgent ? "border-blood/40 bg-blood/3" : "border-thal/30"}`}>
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0 ${p.is_urgent ? "bg-blood/10" : "bg-thal/10"}`}>💉</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-body font-bold text-sm">{p.name}</span>
+                      <Badge className={`text-[10px] border-0 ${p.is_urgent ? "bg-blood/15 text-blood" : "bg-thal/15 text-thal"}`}>{p.is_urgent ? "OVERDUE / CRITICAL" : "DUE SOON"}</Badge>
+                    </div>
+                    <div className="font-body text-xs text-muted-foreground mt-0.5">💉 ThalCare · {p.group} · Next transfusion: <strong>{p.nextDate}</strong> · {p.countdown}</div>
+                    <div className="font-body text-xs text-muted-foreground mt-0.5">Assigned donor: {p.donor} · {p.freq}</div>
+                  </div>
+                  <Link to="/thal-care"><Button size="sm" className="bg-thal/10 text-thal hover:bg-thal hover:text-white font-body font-semibold rounded-lg border border-thal/30 shrink-0">Manage</Button></Link>
+                </motion.div>
+              ))}
+              {plateletReqs.map((p: any, i: number) => (
+                <motion.div key={p.id || i} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: (thalPatients.length + i) * 0.05 }}
+                  className={`rounded-xl border-2 bg-card p-4 flex items-center gap-4 ${p.is_critical ? "border-blood/40 bg-blood/3" : "border-platelet/30"}`}>
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0 ${p.is_critical ? "bg-blood/10" : "bg-platelet/10"}`}>⏱️</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-body font-bold text-sm">{p.patient}</span>
+                      <Badge className={`text-[10px] border-0 ${p.is_critical ? "bg-blood/15 text-blood" : "bg-platelet/15 text-platelet"}`}>{p.is_critical ? "EXPIRES TODAY/TOMORROW" : "EXPIRING SOON"}</Badge>
+                    </div>
+                    <div className="font-body text-xs text-muted-foreground mt-0.5">⏱️ PlateletAlert · {p.group} · {p.cancer !== "—" ? p.cancer : "Cancer patient"} · Expires in: <strong className="text-blood">{p.expiry}</strong></div>
+                    <div className="font-body text-xs text-muted-foreground mt-0.5">{p.hospital} · {p.units} unit(s) needed</div>
+                  </div>
+                  <Link to="/platelet-alert"><Button size="sm" className="bg-platelet/10 text-platelet hover:bg-platelet hover:text-white font-body font-semibold rounded-lg border border-platelet/30 shrink-0">Act Now</Button></Link>
+                </motion.div>
+              ))}
+
+            </div>
+          )}
+      </div>
+    </div>
+  );
+}
+
+function BloodBankDashboard() {
+  return (
+    <div className="space-y-6">
+      <div className="rounded-2xl bg-gradient-to-r from-red-600 to-red-800 p-6 text-primary-foreground">
+        <h2 className="font-display text-2xl font-bold mb-2">🩸 Blood Bank Dashboard</h2>
+        <p className="font-body text-primary-foreground/70 text-sm mb-4">Licensed Blood Collection & Storage Center</p>
+        <div className="flex gap-3">
+          <Button className="bg-primary-foreground text-red-700 font-body font-bold rounded-xl"><Plus className="w-4 h-4 mr-2" />Log New Collection</Button>
+          <Button variant="outline" className="border-primary-foreground/40 text-primary-foreground font-body font-bold rounded-xl hover:bg-primary-foreground/10"><Activity className="w-4 h-4 mr-2" />View Inventory</Button>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[{ icon: "🩸", label: "Units in Stock", value: "342", color: "text-blood" }, { icon: "📥", label: "Collected Today", value: "18", color: "text-secondary" }, { icon: "📤", label: "Dispatched Today", value: "12", color: "text-platelet" }, { icon: "⚠️", label: "Expiring Soon", value: "7", color: "text-organ" }].map(({ icon, label, value, color }) => (
+          <div key={label} className="rounded-xl bg-card border border-border p-4 shadow-card text-center">
+            <div className="text-2xl mb-1">{icon}</div><div className={`font-display text-2xl font-bold ${color}`}>{value}</div><div className="font-body text-xs text-muted-foreground">{label}</div>
+          </div>
+        ))}
+      </div>
+      <div>
+        <h3 className="font-display text-lg font-bold mb-4">Blood Inventory by Group</h3>
+        <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
+          {[{ group: "A+", units: 58, status: "ok" }, { group: "A-", units: 12, status: "low" }, { group: "B+", units: 74, status: "ok" }, { group: "B-", units: 8, status: "critical" }, { group: "AB+", units: 31, status: "ok" }, { group: "AB-", units: 5, status: "critical" }, { group: "O+", units: 96, status: "ok" }, { group: "O-", units: 3, status: "critical" }].map(({ group, units, status }) => (
+            <div key={group} className={`rounded-xl border-2 p-3 text-center ${status === "critical" ? "border-blood bg-blood/5" : status === "low" ? "border-platelet bg-platelet/5" : "border-border bg-card"}`}>
+              <div className="font-display text-lg font-bold">{group}</div>
+              <div className={`font-display text-xl font-bold ${status === "critical" ? "text-blood" : status === "low" ? "text-platelet" : "text-foreground"}`}>{units}</div>
+              <div className="font-body text-xs text-muted-foreground">units</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div>
+        <h3 className="font-display text-lg font-bold mb-4">Recent Dispatch Requests</h3>
+        <div className="space-y-3">
+          {[{ hospital: "KEM Hospital", group: "O-", units: 2, status: "Dispatched", time: "15 min ago" }, { hospital: "Lilavati Hospital", group: "B+", units: 3, status: "Pending", time: "45 min ago" }, { hospital: "Hinduja Hospital", group: "AB+", units: 1, status: "Dispatched", time: "1 hr ago" }].map((req, i) => (
+            <div key={i} className="rounded-xl border-2 border-border bg-card p-4 flex items-center gap-4">
+              <div className="text-2xl">🏥</div>
+              <div className="flex-1"><span className="font-body font-bold text-sm">{req.hospital}</span><div className="font-body text-xs text-muted-foreground mt-0.5">{req.group} · {req.units} unit(s) · {req.time}</div></div>
+              <Badge className={`text-xs border-0 font-body ${req.status === "Dispatched" ? "bg-secondary/15 text-secondary" : "bg-platelet/15 text-platelet"}`}>{req.status}</Badge>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrphanageDashboard() {
+  return (
+    <div className="space-y-6">
+      <div className="rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 p-6 text-primary-foreground">
+        <h2 className="font-display text-2xl font-bold mb-2">🏠 Orphanage Dashboard</h2>
+        <p className="font-body text-primary-foreground/70 text-sm mb-4">Registered Child Care Institution</p>
+        <div className="flex gap-3">
+          <Button className="bg-primary-foreground text-amber-700 font-body font-bold rounded-xl"><Plus className="w-4 h-4 mr-2" />Request Breast Milk</Button>
+          <Button variant="outline" className="border-primary-foreground/40 text-primary-foreground font-body font-bold rounded-xl hover:bg-primary-foreground/10"><Users className="w-4 h-4 mr-2" />View Children</Button>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[{ icon: "👶", label: "Children Under Care", value: "34", color: "text-platelet" }, { icon: "🍼", label: "Milk Received (L)", value: "28", color: "text-secondary" }, { icon: "💉", label: "Health Checkups Due", value: "5", color: "text-blood" }, { icon: "🤝", label: "Active Donors", value: "12", color: "text-organ" }].map(({ icon, label, value, color }) => (
+          <div key={label} className="rounded-xl bg-card border border-border p-4 shadow-card text-center">
+            <div className="text-2xl mb-1">{icon}</div><div className={`font-display text-2xl font-bold ${color}`}>{value}</div><div className="font-body text-xs text-muted-foreground">{label}</div>
+          </div>
+        ))}
+      </div>
+      <div>
+        <h3 className="font-display text-lg font-bold mb-4">Pending Requests</h3>
+        <div className="space-y-3">
+          {[{ type: "🍼", need: "Breast Milk", qty: "5 liters", urgency: "URGENT", posted: "2 hrs ago" }, { type: "🩸", need: "Blood (B+)", qty: "2 units", urgency: "NORMAL", posted: "1 day ago" }, { type: "💊", need: "Thalassemia Screening", qty: "8 children", urgency: "SCHEDULED", posted: "3 days ago" }].map((req, i) => (
+            <div key={i} className="rounded-xl border-2 border-border bg-card p-4 flex items-center gap-4">
+              <div className="text-2xl">{req.type}</div>
+              <div className="flex-1"><span className="font-body font-bold text-sm">{req.need}</span><div className="font-body text-xs text-muted-foreground mt-0.5">{req.qty} · Posted {req.posted}</div></div>
+              <Badge className={`text-xs border-0 font-body ${req.urgency === "URGENT" ? "bg-blood/15 text-blood" : req.urgency === "SCHEDULED" ? "bg-muted text-muted-foreground" : "bg-secondary/15 text-secondary"}`}>{req.urgency}</Badge>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NgoDashboard() {
+  return (
+    <div className="space-y-6">
+      <div className="rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 p-6 text-primary-foreground">
+        <h2 className="font-display text-2xl font-bold mb-2">🤝 NGO / Foundation Dashboard</h2>
+        <p className="font-body text-primary-foreground/70 text-sm mb-4">Verified Non-Profit Organization</p>
+        <div className="flex gap-3">
+          <Button className="bg-primary-foreground text-emerald-700 font-body font-bold rounded-xl"><Plus className="w-4 h-4 mr-2" />Organize Drive</Button>
+          <Button variant="outline" className="border-primary-foreground/40 text-primary-foreground font-body font-bold rounded-xl hover:bg-primary-foreground/10"><BarChart3 className="w-4 h-4 mr-2" />Impact Report</Button>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[{ icon: "🎯", label: "Drives This Month", value: "6", color: "text-secondary" }, { icon: "👥", label: "Donors Mobilized", value: "284", color: "text-platelet" }, { icon: "🩸", label: "Units Collected", value: "152", color: "text-blood" }, { icon: "🏥", label: "Partner Hospitals", value: "11", color: "text-organ" }].map(({ icon, label, value, color }) => (
+          <div key={label} className="rounded-xl bg-card border border-border p-4 shadow-card text-center">
+            <div className="text-2xl mb-1">{icon}</div><div className={`font-display text-2xl font-bold ${color}`}>{value}</div><div className="font-body text-xs text-muted-foreground">{label}</div>
+          </div>
+        ))}
+      </div>
+      <div>
+        <h3 className="font-display text-lg font-bold mb-4">Upcoming Drives</h3>
+        <div className="space-y-3">
+          {[{ name: "Mega Blood Drive — Dadar", date: "22 Feb, 9 AM", registered: 45, target: 100, status: "OPEN" }, { name: "Thalassemia Awareness Camp", date: "25 Feb, 10 AM", registered: 28, target: 50, status: "OPEN" }, { name: "Platelet Donation Drive — Andheri", date: "1 Mar, 8 AM", registered: 0, target: 60, status: "UPCOMING" }].map((drive, i) => (
+            <div key={i} className="rounded-xl border-2 border-border bg-card p-4 flex items-center gap-4">
+              <div className="text-2xl">📅</div>
+              <div className="flex-1"><span className="font-body font-bold text-sm">{drive.name}</span><div className="font-body text-xs text-muted-foreground mt-0.5">{drive.date} · {drive.registered}/{drive.target} registered</div></div>
+              <Badge className={`text-xs border-0 font-body ${drive.status === "OPEN" ? "bg-secondary/15 text-secondary" : "bg-muted text-muted-foreground"}`}>{drive.status}</Badge>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div>
+        <h3 className="font-display text-lg font-bold mb-4">Recent Impact</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[{ label: "Lives Saved This Month", value: "47", icon: "❤️" }, { label: "Volunteer Hours", value: "320", icon: "⏰" }, { label: "Communities Reached", value: "8", icon: "🌍" }].map(({ label, value, icon }) => (
+            <div key={label} className="rounded-xl bg-card border border-border p-5 shadow-card text-center">
+              <div className="text-3xl mb-2">{icon}</div><div className="font-display text-3xl font-bold text-foreground">{value}</div><div className="font-body text-sm text-muted-foreground mt-1">{label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminDashboard() {
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[{ icon: "🔍", label: "Pending Verifications", value: "142", color: "text-platelet", action: "Review" }, { icon: "🚩", label: "Flagged Accounts", value: "7", color: "text-blood", action: "Investigate" }, { icon: "👥", label: "Total Users", value: "12.4L", color: "text-secondary", action: "View All" }, { icon: "📊", label: "Today's Matches", value: "2,847", color: "text-organ", action: "Analytics" }].map(({ icon, label, value, color, action }) => (
+          <div key={label} className="rounded-xl bg-card border border-border p-5 shadow-card">
+            <div className="text-2xl mb-2">{icon}</div><div className={`font-display text-3xl font-bold ${color} mb-1`}>{value}</div><div className="font-body text-xs text-muted-foreground mb-3">{label}</div>
+            <Button size="sm" variant="outline" className="border-border font-body text-xs rounded-lg w-full">{action}<ChevronRight className="w-3 h-3 ml-auto" /></Button>
+          </div>
+        ))}
+      </div>
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-display text-lg font-bold flex items-center gap-2"><Shield className="w-5 h-5 text-secondary" />Verification Queue</h3>
+          <Badge className="bg-platelet/15 text-platelet border-0 font-body">142 pending</Badge>
+        </div>
+        <div className="space-y-3">
+          {[{ name: "Priya Nair", type: "Donor", city: "Chennai", docs: "Aadhaar, Blood Report", time: "2h ago" }, { name: "Ramesh Blood Bank", type: "Hospital", city: "Pune", docs: "License, NABH", time: "4h ago" }, { name: "Kavita Deshpande", type: "Donor", city: "Nagpur", docs: "Aadhaar, HLA Report", time: "6h ago" }].map((item, i) => (
+            <div key={i} className="rounded-xl border border-border bg-card p-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center font-display font-bold text-foreground">{item.name[0]}</div>
+              <div className="flex-1"><div className="font-body font-semibold text-sm text-foreground">{item.name}</div><div className="font-body text-xs text-muted-foreground">{item.type} · {item.city} · {item.docs} · {item.time}</div></div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="border-secondary text-secondary rounded-lg font-body text-xs">✓ Approve</Button>
+                <Button size="sm" variant="outline" className="border-blood text-blood rounded-lg font-body text-xs">✗ Reject</Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrgDashboardRouter() {
+  const { orgType } = useAuth();
+  switch (orgType) {
+    case "bloodbank": return <BloodBankDashboard />;
+    case "orphanage": return <OrphanageDashboard />;
+    case "ngo": return <NgoDashboard />;
+    case "hospital":
+    default: return <HospitalDashboard />;
+  }
+}
+
+export default function Dashboard() {
+  const { role: contextRole, userName } = useAuth();
+  // Fallback: check localStorage in case AuthContext hasn't synced yet (fixes login→dashboard race)
+  const role = contextRole || (localStorage.getItem("lfc_role") as typeof contextRole);
+  if (!role) return (
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="text-center space-y-4">
+        <h2 className="font-display text-2xl font-bold text-foreground">Please log in first</h2>
+        <p className="font-body text-muted-foreground">You need to be logged in to view the dashboard.</p>
+        <Link to="/login"><Button className="bg-gradient-primary text-primary-foreground font-body font-bold rounded-xl">Go to Login</Button></Link>
+      </div>
+    </div>
+  );
+  const roleLabels: Record<string, string> = { donor: "🩸 Donor", hospital: "🏥 Hospital", admin: "🛡️ Admin" };
+  return (
+    <div className="min-h-screen bg-background">
+      <Navbar />
+      <div className="container mx-auto px-4 pt-24 pb-16">
+        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+          <div className="flex items-center gap-2 mb-1">
+            <Heart className="w-5 h-5 text-primary fill-current" />
+            <span className="font-body text-sm font-semibold text-muted-foreground uppercase tracking-wider">Dashboard</span>
+            <Badge className="bg-muted text-muted-foreground border-0 font-body text-xs ml-2">{roleLabels[role]}</Badge>
+          </div>
+          <h1 className="font-display text-3xl md:text-4xl font-bold text-foreground">Welcome back, {userName} 👋</h1>
+        </motion.div>
+        {role === "donor" && <DonorDashboard />}
+        {role === "hospital" && <OrgDashboardRouter />}
+        {role === "admin" && <AdminDashboard />}
+      </div>
+      <Footer />
+    </div>
+  );
+}
