@@ -118,3 +118,107 @@ def register_hla(body: RegisterHlaBody):
         "message": "HLA type registered. You are now in the marrow donor registry.",
     }
 
+
+# ── GET /marrow/donors ────────────────────────────────────────────────────────
+
+@router.get("/donors")
+def get_marrow_donors():
+    """Returns all donors registered for marrow donation."""
+    res = supabase.table("donors") \
+        .select("id, name, city, trust_score, is_verified, hla_type, is_available") \
+        .contains("donor_types", ["marrow"]) \
+        .execute()
+    return res.data or []
+
+
+# ── POST /marrow/contact ──────────────────────────────────────────────────────
+
+class ContactDonorBody(BaseModel):
+    donor_id:    str
+    patient_id:  Optional[str] = None   # hospital's patient reference
+    hospital_id: Optional[str] = None
+    urgency:     str = "routine"         # "routine" | "high" | "critical"
+    message:     Optional[str] = None   # optional free-text from hospital
+
+
+@router.post("/contact")
+def contact_marrow_donor(body: ContactDonorBody):
+    """
+    Called when hospital clicks 'Contact' on a match card.
+    1. Creates a record in the matches table (status = 'pending').
+    2. Returns contact information so the hospital knows next steps.
+    """
+    # Verify donor exists
+    donor_res = supabase.table("donors") \
+        .select("id, name, city") \
+        .eq("id", body.donor_id) \
+        .single() \
+        .execute()
+
+    if not donor_res.data:
+        raise HTTPException(status_code=404, detail="Donor not found")
+
+    donor = donor_res.data
+
+    # Insert match record
+    insert_data = {
+        "donor_id":    body.donor_id,
+        "module":      "marrow",
+        "status":      "pending",
+        "match_score": 1.0,
+    }
+    if body.patient_id:
+        insert_data["request_id"] = body.patient_id
+
+    match_res = supabase.table("matches").insert(insert_data).execute()
+
+    match_id = None
+    if match_res.data:
+        match_id = match_res.data[0].get("id")
+
+    return {
+        "success":    True,
+        "match_id":   match_id,
+        "donor_name": donor.get("name", "Donor"),
+        "donor_city": donor.get("city", "—"),
+        "next_steps": [
+            "Our team will contact the donor within 24 hours.",
+            "Donor will be asked to confirm HLA typing at a certified lab.",
+            "Once confirmed, counselling session will be arranged.",
+            "Harvest and transplant will be scheduled based on patient readiness.",
+        ],
+        "message": (
+            f"Contact request submitted for donor in {donor.get('city', '—')}. "
+            f"Urgency: {body.urgency}. Reference ID: {match_id or 'pending'}."
+        ),
+    }
+
+
+# ── POST /marrow/request ──────────────────────────────────────────────────────
+
+class MarrowRequestBody(BaseModel):
+    patient_name:  str
+    patient_hla:   list[str]
+    urgency:       str = "routine"
+    hospital_id:   Optional[str] = None
+    notes:         Optional[str] = None
+
+
+@router.post("/request")
+def submit_marrow_request(body: MarrowRequestBody):
+    """
+    Called by 'Find Matches' button when a patient name + HLA file is submitted.
+    Stores the request and returns top matches.
+    """
+    # Re-use the match logic
+    match_result = find_marrow_matches(MarrowMatchRequest(
+        patient_hla=body.patient_hla,
+        urgency=body.urgency,
+    ))
+
+    return {
+        "patient_name": body.patient_name,
+        "urgency":      body.urgency,
+        "total_found":  match_result["total_found"],
+        "matches":      match_result["matches"],
+    }
