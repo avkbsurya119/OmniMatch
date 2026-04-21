@@ -86,3 +86,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // silently fail
         }
     }, [notifications]);
+
+    // Poll for new notifications every 30 seconds when logged in
+    useEffect(() => {
+        if (!role) return;
+        refreshNotifications();
+        const interval = setInterval(refreshNotifications, 30_000);
+        return () => clearInterval(interval);
+    }, [role, refreshNotifications]);
+
+    // Persist role, orgType, userName, profile to localStorage
+    useEffect(() => {
+        role ? localStorage.setItem("lfc_role", role) : localStorage.removeItem("lfc_role");
+    }, [role]);
+    useEffect(() => {
+        orgType ? localStorage.setItem("lfc_orgType", orgType) : localStorage.removeItem("lfc_orgType");
+    }, [orgType]);
+    useEffect(() => {
+        userName ? localStorage.setItem("lfc_userName", userName) : localStorage.removeItem("lfc_userName");
+    }, [userName]);
+    useEffect(() => {
+        profile ? localStorage.setItem("lfc_profile", JSON.stringify(profile)) : localStorage.removeItem("lfc_profile");
+    }, [profile]);
+
+    const login = (newRole: UserRole, name: string, newOrgType?: OrgType, newProfile?: UserProfile) => {
+        setRole(newRole);
+        setUserName(name);
+        setOrgType(newOrgType || null);
+        setProfile(newProfile || null);
+    };
+
+    const logout = () => {
+        setRole(null);
+        setUserName("");
+        setOrgType(null);
+        setProfile(null);
+        setNotifications([]);
+    };
+
+    return (
+        <AuthContext.Provider value={{
+            role, orgType, userName, profile,
+            notifications, unreadCount,
+            login, logout,
+            markNotificationsRead, refreshNotifications,
+        }}>
+            {children}
+        </AuthContext.Provider>
+    );
+}
+
+export function useAuth() {
+    return useContext(AuthContext);
+}
