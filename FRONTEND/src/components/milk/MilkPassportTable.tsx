@@ -82,3 +82,83 @@ export default function MilkPassportTable({ data, isLoading, onViewPassport }: M
       <div className="rounded-2xl border-2 border-border/50 bg-card overflow-hidden shadow-card">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[700px]">
+            <thead className="bg-muted/50 border-b border-border">
+              <tr>
+                {["Passport ID", "Donor", "Pasteurized", "Expiry", "Qty", "Cold Chain Status", "Track"].map((h) => (
+                  <th key={h} className="font-display text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-6 py-4 text-left">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-10 font-body text-xs text-muted-foreground">
+                    Loading log entries...
+                  </td>
+                </tr>
+              ) : data.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-10 font-body text-xs text-muted-foreground italic">
+                    No milk shipments currently in processing.
+                  </td>
+                </tr>
+              ) : (
+                data.map((row) => {
+                  const statusConfig = getStatusConfig(row.status);
+                  const StatusIcon = statusConfig.icon;
+                  const isUrgent = row.status === "Expiring Soon" || row.status === "Low Stock" || row.status === "Expired";
+
+                  return (
+                    <tr
+                      key={row.id}
+                      className={`border-b border-border last:border-0 hover:bg-milk/5 transition-colors group ${
+                        isUrgent ? "bg-amber-50/50" : ""
+                      }`}
+                    >
+                      <td className="font-body text-xs font-bold px-6 py-4 text-milk group-hover:underline cursor-pointer">
+                        {row.id}
+                      </td>
+                      <td className="font-body text-sm font-semibold px-6 py-4">{row.from}</td>
+                      <td className="font-body text-xs px-6 py-4 text-muted-foreground">{row.pasteurized}</td>
+                      <td className={`font-body text-xs px-6 py-4 ${isUrgent ? "text-amber-700 font-semibold" : "text-muted-foreground"}`}>
+                        {row.expiry}
+                        {isUrgent && <AlertTriangle className="w-3 h-3 inline ml-1" />}
+                      </td>
+                      <td className="font-body text-sm font-black px-6 py-4 text-foreground/80">{row.qty}</td>
+                      <td className="px-6 py-4">
+                        <Badge className={`text-[9px] uppercase px-2 py-0.5 border-0 font-bold flex items-center gap-1 w-fit ${statusConfig.color}`}>
+                          <StatusIcon className="w-3 h-3" />
+                          {row.status}
+                        </Badge>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => onViewPassport(row.id)}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg bg-muted group-hover:bg-milk/20 group-hover:text-milk transition-all"
+                        >
+                          <QrCode className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 p-4 rounded-xl bg-orange-50 border border-orange-200">
+        <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-600">
+          <Shield className="w-4 h-4" />
+        </div>
+        <p className="font-body text-[11px] text-orange-900 leading-tight">
+          Each sample in MilkBridge is tracked via <strong>Milk Passport</strong> with full cold-chain visibility.
+          We guarantee rigorous pasteurization protocols following WHO guidelines.
+        </p>
+      </div>
+    </div>
+  );
+}
