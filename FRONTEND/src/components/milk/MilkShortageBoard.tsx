@@ -100,3 +100,70 @@ export default function MilkShortageBoard({
                 className={`w-4 h-4 ${
                   normalizedUrgency(alert.urgency) === "CRITICAL"
                     ? "text-blood animate-pulse"
+                    : "text-amber-600"
+                }`}
+              />
+              <h3 className="font-display text-xs font-bold text-blood uppercase tracking-wide flex-1 truncate">
+                {alert.hospital}
+              </h3>
+              <Badge
+                className={`text-[8px] shrink-0 ${getUrgencyBadge(alert.urgency)}`}
+              >
+                {normalizedUrgency(alert.urgency)}
+              </Badge>
+            </div>
+
+            <p className="font-body text-xs text-muted-foreground mb-1">
+              {alert.city}
+            </p>
+            <p className="font-body text-sm font-semibold mb-2">
+              {alert.quantity_needed}
+            </p>
+
+            {alert.infant_name && (
+              <p className="font-body text-[10px] text-muted-foreground mb-2">
+                For: {alert.infant_name}
+              </p>
+            )}
+
+            {alert.time_left && (
+              <p className="font-body text-[10px] text-muted-foreground mb-3 flex items-center gap-1">
+                <Clock className="w-3 h-3" /> {alert.time_left} remaining
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              {/* Donors can offer to help */}
+              {isDonor && onRespond && (
+                <Button
+                  onClick={() => onRespond(alert)}
+                  className="flex-1 bg-blood text-white font-body font-bold rounded-xl h-9 hover:bg-blood/90 text-xs"
+                >
+                  I Can Help
+                </Button>
+              )}
+
+              {/* Hospitals can find matched donors */}
+              {isHospital && onFindMatches && (
+                <Button
+                  onClick={() => onFindMatches(alert)}
+                  variant="outline"
+                  className="flex-1 font-body rounded-xl h-9 text-xs"
+                >
+                  Find Donors
+                </Button>
+              )}
+
+              {/* Logged-out / public visitors see a read-only state */}
+              {!isDonor && !isHospital && (
+                <p className="text-[10px] text-muted-foreground italic">
+                  Login to respond to this alert
+                </p>
+              )}
+            </div>
+          </motion.div>
+        ))
+      )}
+    </div>
+  );
+}
