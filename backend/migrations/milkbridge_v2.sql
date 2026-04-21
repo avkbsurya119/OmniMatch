@@ -89,3 +89,76 @@ CREATE TABLE IF NOT EXISTS milk_matches (
 );
 
 -- ── Enable RLS on new tables ────────────────────────────────────────────────────
+
+ALTER TABLE milk_donations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE milk_matches ENABLE ROW LEVEL SECURITY;
+
+-- ── RLS Policies ────────────────────────────────────────────────────────────────
+-- Backend uses service role key (bypasses RLS). These are for direct frontend access.
+
+-- Milk donations: public read for verified hospitals, donors can see their own
+CREATE POLICY "Public read milk_donations" ON milk_donations FOR SELECT USING (true);
+
+-- Milk matches: public read
+CREATE POLICY "Public read milk_matches" ON milk_matches FOR SELECT USING (true);
+
+-- ── Enable Realtime ─────────────────────────────────────────────────────────────
+
+ALTER PUBLICATION supabase_realtime ADD TABLE milk_donations;
+ALTER PUBLICATION supabase_realtime ADD TABLE milk_matches;
+ALTER PUBLICATION supabase_realtime ADD TABLE milk_requests;
+
+-- ── Indexes for performance ─────────────────────────────────────────────────────
+
+CREATE INDEX IF NOT EXISTS idx_milk_donors_pincode ON milk_donors(pincode);
+CREATE INDEX IF NOT EXISTS idx_milk_donors_screening ON milk_donors(screening_status);
+CREATE INDEX IF NOT EXISTS idx_milk_donors_available ON milk_donors(is_available);
+
+CREATE INDEX IF NOT EXISTS idx_milk_requests_status ON milk_requests(status);
+CREATE INDEX IF NOT EXISTS idx_milk_requests_urgency ON milk_requests(urgency);
+CREATE INDEX IF NOT EXISTS idx_milk_requests_hospital ON milk_requests(hospital_id);
+
+CREATE INDEX IF NOT EXISTS idx_milk_donations_donor ON milk_donations(donor_id);
+CREATE INDEX IF NOT EXISTS idx_milk_donations_hospital ON milk_donations(receiving_hospital_id);
+CREATE INDEX IF NOT EXISTS idx_milk_donations_status ON milk_donations(status);
+CREATE INDEX IF NOT EXISTS idx_milk_donations_passport ON milk_donations(passport_id);
+
+CREATE INDEX IF NOT EXISTS idx_milk_matches_request ON milk_matches(request_id);
+CREATE INDEX IF NOT EXISTS idx_milk_matches_donor ON milk_matches(donor_id);
+CREATE INDEX IF NOT EXISTS idx_milk_matches_status ON milk_matches(status);
+
+-- ── Function to generate passport IDs ───────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION generate_milk_passport_id()
+RETURNS text AS $$
+DECLARE
+  yr text;
+  seq int;
+  new_id text;
+BEGIN
+  yr := to_char(now(), 'YYYY');
+  SELECT COALESCE(MAX(CAST(SUBSTRING(passport_id FROM 9) AS integer)), 0) + 1
+  INTO seq
+  FROM milk_donations
+  WHERE passport_id LIKE 'MP-' || yr || '-%';
+
+  new_id := 'MP-' || yr || '-' || LPAD(seq::text, 6, '0');
+  RETURN new_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ── Sample data for testing ─────────────────────────────────────────────────────
+
+-- Update existing milk_donors with new fields
+UPDATE milk_donors SET
+  screening_status = 'cleared',
+  screening_date = CURRENT_DATE - INTERVAL '30 days',
+  pincode = '400001',
+  city = 'Mumbai'
+WHERE id IN (SELECT id FROM milk_donors LIMIT 3);
+
+-- Add a sample milk request with urgency
+INSERT INTO milk_requests (hospital_id, infant_name, daily_quantity_ml, status, urgency, pincode)
+SELECT id, 'NICU Ward A', 300, 'open', 'urgent', '400001'
+FROM hospitals WHERE reg_number = 'KE001' LIMIT 1
+ON CONFLICT DO NOTHING;
