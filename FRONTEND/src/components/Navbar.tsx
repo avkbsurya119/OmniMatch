@@ -195,3 +195,150 @@ export default function Navbar() {
                           )}
                         </div>
                       </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {/* Settings */}
+                <Link to="/settings">
+                  <Button variant="outline" size="sm" className="border-border font-body rounded-xl gap-1.5">
+                    <Settings className="w-4 h-4" /> Settings
+                  </Button>
+                </Link>
+
+                {/* Profile dropdown */}
+                <div className="relative" ref={profileRef}>
+                  <button
+                    onClick={handleProfileOpen}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all font-body text-sm font-bold ${scrolled || !isHome
+                      ? "border-border bg-card hover:border-primary/40 text-foreground"
+                      : "border-primary-foreground/30 hover:border-primary-foreground/60 text-primary-foreground"
+                      }`}
+                  >
+                    <div className="w-6 h-6 rounded-lg bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold">
+                      {userName?.charAt(0).toUpperCase()}
+                    </div>
+                    {userName}
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${profileOpen ? "rotate-180" : ""}`} />
+                  </button>
+
+                  <AnimatePresence>
+                    {profileOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute right-0 top-full mt-2 w-48 bg-card rounded-xl shadow-lg border border-border overflow-hidden z-50"
+                      >
+                        <div className="px-4 py-3 border-b border-border bg-muted/40">
+                          <p className="font-body text-xs text-muted-foreground">Signed in as</p>
+                          <p className="font-display font-bold text-sm text-foreground truncate">{userName}</p>
+                        </div>
+                        <div className="p-1.5">
+                          <button
+                            onClick={() => { setProfileOpen(false); handleLogout(); }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-red-50 transition-colors font-body text-sm text-red-500"
+                          >
+                            <LogOut className="w-4 h-4" />
+                            Logout
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Mobile toggle */}
+          <button
+            className={`md:hidden p-2 rounded-lg ${textColor}`}
+            onClick={() => setIsOpen(!isOpen)}
+          >
+            {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+        </div>
+
+        {/* Mobile menu */}
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="md:hidden bg-card border-t border-border overflow-hidden"
+            >
+              <div className="py-4 space-y-1">
+                {role && (
+                  <div className="px-4 py-3 mb-2 bg-primary/5 border-b border-border flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold">
+                        {userName?.charAt(0).toUpperCase()}
+                      </div>
+                      <span className="font-display font-bold text-sm">{userName}</span>
+                    </div>
+                    <Badge className="bg-primary/20 text-primary border-0">{role}</Badge>
+                  </div>
+                )}
+
+                <Link
+                  to="/ai-companion"
+                  onClick={() => setIsOpen(false)}
+                  className="flex items-center gap-3 px-4 py-3 bg-primary/5 hover:bg-primary/10 rounded-lg mx-2 transition-colors border border-primary/20"
+                >
+                  <span className="text-xl">✨</span>
+                  <span className="font-body font-bold text-sm text-primary">AI Companion</span>
+                </Link>
+
+                <div className="flex flex-col gap-2 px-4 pt-3 border-t border-border mx-2">
+                  {!role ? (
+                    <>
+                      <Link to="/login" onClick={() => setIsOpen(false)}>
+                        <Button variant="outline" className="w-full border-primary text-primary">Login</Button>
+                      </Link>
+                      <Link to="/register" onClick={() => setIsOpen(false)}>
+                        <Button className="w-full bg-gradient-primary text-primary-foreground">Donate / Register</Button>
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <Link to="/dashboard" onClick={() => setIsOpen(false)}>
+                        <Button variant="outline" className="w-full border-primary text-primary gap-2">
+                          <LayoutDashboard className="w-4 h-4" /> My Dashboard
+                        </Button>
+                      </Link>
+                      <Button
+                        variant="outline"
+                        onClick={() => { setIsOpen(false); handleAlertsOpen(); }}
+                        className="w-full border-border font-body rounded-xl gap-2 justify-start"
+                      >
+                        <Bell className="w-4 h-4" /> Alerts
+                        {unreadCount > 0 && (
+                          <Badge className="ml-auto bg-primary text-primary-foreground text-xs border-0">{unreadCount}</Badge>
+                        )}
+                      </Button>
+                      <Link to="/settings" onClick={() => setIsOpen(false)}>
+                        <Button variant="outline" className="w-full border-border text-foreground gap-2">
+                          <Settings className="w-4 h-4" /> Settings
+                        </Button>
+                      </Link>
+                      <Button
+                        onClick={handleLogout}
+                        variant="ghost"
+                        className="w-full text-red-500 hover:bg-red-50 gap-2"
+                      >
+                        <LogOut className="w-4 h-4" /> Logout
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </nav>
+  );
+}
