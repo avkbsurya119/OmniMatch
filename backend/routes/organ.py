@@ -105,3 +105,87 @@ def get_organ_recipients(
     results.sort(key=lambda x: -x["urgency"])
     for i, r in enumerate(results):
         r["rank"] = i + 1
+
+    return results[:limit]
+
+
+# ── POST /organ/pledge ────────────────────────────────────────────────────────
+
+class OrganPledgeBody(BaseModel):
+    donor_id:       str
+    organs:         list[str]      # ["Heart", "Kidney", "Cornea", ...]
+    family_consent: bool = False
+    pledge_card_url: Optional[str] = None
+
+
+@router.post("/pledge")
+def create_organ_pledge(body: OrganPledgeBody):
+    """
+    Called by 'Get Digital Pledge Card' button on LastGift.tsx.
+    Creates a pledge and returns a pledge ID for the QR code.
+    """
+    res = supabase.table("organ_pledges").insert({
+        "donor_id":       body.donor_id,
+        "organs":         body.organs,
+        "family_consent": body.family_consent,
+        "pledge_card_url": body.pledge_card_url,
+        "is_active":      True,
+    }).execute()
+
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to save pledge")
+
+    pledge_id = res.data[0]["id"]
+
+    # Add 'organ' to donor_types if not already there
+    donor = supabase.table("donors").select("donor_types").eq("id", body.donor_id).single().execute()
+    if donor.data:
+        types = donor.data.get("donor_types") or []
+        if "organ" not in types:
+            supabase.table("donors").update({"donor_types": types + ["organ"]}).eq("id", body.donor_id).execute()
+
+    return {
+        "success":        True,
+        "pledge_id":      pledge_id,
+        "pledge_id_short": pledge_id[:8].upper(),
+        "message":        "Organ pledge saved. Thank you for your generosity.",
+        "organs_pledged": body.organs,
+    }
+
+
+# ── POST /organ/requests ──────────────────────────────────────────────────────
+
+class OrganRequestBody(BaseModel):
+    hospital_id:    str
+    recipient_name: str
+    organ_needed:   str
+    blood_group:    str
+    urgency_score:  int = 5
+    lat:            Optional[float] = None
+    lng:            Optional[float] = None
+    wait_label:     Optional[str] = None   # e.g. "3.2 yrs"
+
+
+@router.post("/requests")
+def post_organ_request(body: OrganRequestBody):
+    """Called by hospital to add a recipient to the waiting list."""
+    res = supabase.table("organ_requests").insert({
+        "hospital_id":    body.hospital_id,
+        "recipient_name": body.recipient_name,
+        "organ_needed":   body.organ_needed,
+        "blood_group":    body.blood_group,
+        "urgency_score":  body.urgency_score,
+        "status":         "waiting",
+        "lat":            body.lat,
+        "lng":            body.lng,
+        "wait_label":     body.wait_label,
+    }).execute()
+
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to create organ request")
+
+    return {
+        "success":    True,
+        "request_id": res.data[0]["id"],
+        "message":    "Recipient added to waiting list.",
+    }
