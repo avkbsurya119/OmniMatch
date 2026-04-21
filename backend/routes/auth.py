@@ -1,0 +1,173 @@
+"""
+routes/auth.py
+--------------
+Endpoints consumed by:
+  • /register page  → POST /auth/register/donor
+                    → POST /auth/register/hospital
+  • /login page     → POST /auth/login
+                    → POST /auth/otp/send
+                    → POST /auth/otp/verify
+"""
+
+import random
+import string
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, EmailStr
+from typing import Optional
+
+from utils.db import supabase, supabase_auth
+from utils.sms import send_sms
+
+router = APIRouter()
+
+
+# ── Pydantic Models ───────────────────────────────────────────────────────────
+
+class DonorRegisterRequest(BaseModel):
+    first_name: str
+    last_name: str
+    mobile: str
+    aadhaar: Optional[str] = None
+    dob: Optional[str] = None
+    gender: Optional[str] = None
+    city: str
+    pincode: Optional[str] = None
+    blood_group: str
+    donor_types: list[str]
+    email: EmailStr
+    password: str
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
+
+class HospitalRegisterRequest(BaseModel):
+    name: str
+    reg_number: str
+    license: Optional[str] = None
+    address: str
+    city: str
+    contact_person: str
+    contact_mobile: str
+    contact_email: EmailStr
+    password: str
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+    role: str = "donor"   # "donor" | "hospital" | "admin"
+
+
+class OtpSendRequest(BaseModel):
+    mobile: str
+
+
+class OtpVerifyRequest(BaseModel):
+    mobile: str
+    otp: str
+
+
+# ── Donor Registration ────────────────────────────────────────────────────────
+
+@router.post("/register/donor")
+def register_donor(req: DonorRegisterRequest):
+    try:
+        auth_res = supabase_auth.auth.sign_up({
+            "email": req.email,
+            "password": req.password,
+        })
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Auth error: {e}")
+
+    user_id = auth_res.user.id if auth_res.user else None
+    if not user_id:
+        raise HTTPException(status_code=500, detail="Failed to create auth user")
+
+    try:
+        res = supabase.table("donors").insert({
+            "id":                 user_id,
+            "name":               f"{req.first_name} {req.last_name}",
+            "mobile":             req.mobile,
+            "aadhaar":            req.aadhaar,
+            "dob":                req.dob,
+            "gender":             req.gender,
+            "city":               req.city,
+            "pincode":            req.pincode,
+            "blood_group":        req.blood_group,
+            "donor_types":        req.donor_types,
+            "hla_type":           [],
+            "is_available":       True,
+            "last_donation_date": None,
+            "trust_score":        50,
+            "is_verified":        True,
+            "lat":                req.lat,
+            "lng":                req.lng,
+        }).execute()
+    except Exception as e:
+        try:
+            supabase_auth.auth.admin.delete_user(user_id)
+        except Exception as delete_err:
+            print(f"[register_donor] Cleanup failed: {delete_err}")
+        err_msg = str(e)
+        if "duplicate key" in err_msg.lower():
+            if "mobile" in err_msg:
+                raise HTTPException(status_code=400, detail="Mobile number already registered")
+            if "aadhaar" in err_msg:
+                raise HTTPException(status_code=400, detail="Aadhaar number already registered")
+        raise HTTPException(status_code=400, detail=f"Registration failed: {err_msg}")
+
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to create donor profile")
+
+    return {
+        "success": True,
+        "donor_id": user_id,
+        "message": "Donor registered successfully.",
+    }
+
+
+# ── Hospital Registration ─────────────────────────────────────────────────────
+
+@router.post("/register/hospital")
+def register_hospital(req: HospitalRegisterRequest):
+    print(f"[register_hospital] Attempting to sign up {req.contact_email}")
+    try:
+        auth_res = supabase_auth.auth.sign_up({
+            "email": req.contact_email,
+            "password": req.password,
+        })
+    except Exception as e:
+        print(f"[register_hospital] Auth error: {e}")
+        raise HTTPException(status_code=400, detail=f"Auth error: {e}")
+
+    user_id = auth_res.user.id if auth_res.user else None
+    print(f"[register_hospital] Auth successful, user_id: {user_id}")
+
+    if not user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="This email is already registered or requires confirmation. Try logging in."
+        )
+
+    try:
+        res = supabase.table("hospitals").insert({
+            "id":          user_id,
+            "name":        req.name,
+            "reg_number":  req.reg_number,
+            "license":     req.license,
+            "address":     req.address,
+            "city":        req.city,
+            "contact":     req.contact_mobile,
+            "is_verified": True,
+            "lat":         req.lat,   # saved so login can return it to the map
+            "lng":         req.lng,   # saved so login can return it to the map
+        }).execute()
+    except Exception as e:
+        print(f"[register_hospital] Profile insert failed: {e}")
+        if user_id:
+            try:
+                supabase_auth.auth.admin.delete_user(user_id)
