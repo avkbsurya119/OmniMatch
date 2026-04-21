@@ -262,3 +262,150 @@ export default function MilkHospitalDashboard({
                           )}
                         </Button>
                       )}
+
+                      {m.status === "collected" && (
+                        <Button
+                          size="sm"
+                          className="flex-1 text-xs bg-secondary text-white"
+                          disabled={busy}
+                          onClick={() => handleLogDonation(m)}
+                        >
+                          {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : (
+                            <><CheckCircle className="w-3 h-3 mr-1" /> Log & Complete</>
+                          )}
+                        </Button>
+                      )}
+
+                      {m.status === "pending" && (
+                        <p className="text-xs text-muted-foreground italic">
+                          Waiting for donor to respond...
+                        </p>
+                      )}
+
+                      {m.status === "delivered" && (
+                        <p className="text-xs text-secondary font-semibold flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3" /> Donation completed ✓
+                        </p>
+                      )}
+
+                      {m.status === "declined" && (
+                        <p className="text-xs text-red-500 italic">
+                          Donor declined. Try finding other matches.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Donation History ─────────────────────────────────────────────── */}
+      <div className="rounded-2xl border bg-card p-6 shadow-card">
+        <h3 className="font-display font-bold mb-4">Recent Donations Received</h3>
+        {dashboard.donation_history.length === 0 ? (
+          <p className="text-muted-foreground text-sm">No donation history yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-2 font-body text-xs text-muted-foreground">Passport ID</th>
+                  <th className="text-left py-2 font-body text-xs text-muted-foreground">Donor</th>
+                  <th className="text-left py-2 font-body text-xs text-muted-foreground">Volume</th>
+                  <th className="text-left py-2 font-body text-xs text-muted-foreground">Date</th>
+                  <th className="text-left py-2 font-body text-xs text-muted-foreground">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dashboard.donation_history.map((d) => (
+                  <tr key={d.passport_id} className="border-b last:border-0">
+                    <td className="py-3 font-body text-sm text-milk font-semibold">{d.passport_id}</td>
+                    <td className="py-3 font-body text-sm">{d.donor_name}</td>
+                    <td className="py-3 font-body text-sm">{d.volume_ml}ml</td>
+                    <td className="py-3 font-body text-sm text-muted-foreground">{d.date}</td>
+                    <td className="py-3">
+                      <Badge variant="outline" className="text-[10px]">{d.status}</Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Pickup Scheduling Modal ──────────────────────────────────────── */}
+      <AnimatePresence>
+        {showPickupModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="w-full max-w-md bg-card rounded-3xl border-2 border-milk/20 shadow-2xl overflow-hidden"
+            >
+              <div className="bg-milk p-6 flex justify-between items-center">
+                <div>
+                  <h3 className="font-display text-xl font-bold">Schedule Pickup</h3>
+                  <p className="text-foreground/70 text-xs font-body">{selectedMatch?.donor_name}</p>
+                </div>
+                <button
+                  onClick={() => { setShowPickupModal(false); setSelectedMatch(null); }}
+                  className="p-2 hover:bg-white/20 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">
+                    Pickup Date *
+                  </Label>
+                  <Input
+                    type="date"
+                    className="rounded-xl"
+                    value={pickupDate}
+                    onChange={(e) => setPickupDate(e.target.value)}
+                    min={new Date().toISOString().split("T")[0]}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">
+                    Pickup Time
+                  </Label>
+                  <Input
+                    type="time"
+                    className="rounded-xl"
+                    value={pickupTime}
+                    onChange={(e) => setPickupTime(e.target.value)}
+                  />
+                </div>
+
+                <p className="font-body text-[11px] text-muted-foreground italic bg-milk/10 p-3 rounded-xl">
+                  The donor will receive an SMS and in-app notification with these pickup details.
+                </p>
+
+                <Button
+                  onClick={handleSchedulePickup}
+                  disabled={isUpdating !== null || !pickupDate}
+                  className="w-full bg-milk text-foreground font-bold h-12 rounded-xl"
+                >
+                  {isUpdating ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <><Truck className="w-4 h-4 mr-2" /> Confirm Pickup</>
+                  )}
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
