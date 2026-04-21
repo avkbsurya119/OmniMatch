@@ -74,3 +74,88 @@ export default function FileUploadZone({
                     addFiles(e.dataTransfer.files);
                 }}
                 className={`
+          relative border-2 border-dashed rounded-xl p-6 text-center
+          cursor-pointer transition-all select-none outline-none
+          focus-visible:ring-2 focus-visible:ring-offset-2
+          ${dragging
+                        ? `border-${accentClass} bg-${accentClass}/10 scale-[1.01]`
+                        : files.length > 0
+                            ? `border-${accentClass}/60 bg-${accentClass}/5`
+                            : `border-border hover:border-${accentClass}/40 hover:bg-${accentClass}/5`
+                    }
+        `}
+            >
+                <input
+                    ref={inputRef}
+                    type="file"
+                    accept={accept}
+                    multiple={multiple}
+                    className="sr-only"
+                    onChange={(e) => addFiles(e.target.files)}
+                />
+
+                {files.length === 0 ? (
+                    <>
+                        <Upload className={`w-8 h-8 text-${accentClass} opacity-60 mx-auto mb-2`} />
+                        <p className="font-body text-sm text-muted-foreground">
+                            Drag & drop or{" "}
+                            <span className={`text-${accentClass} font-semibold`}>browse</span>
+                        </p>
+                        {hint && (
+                            <p className="font-body text-xs text-muted-foreground mt-1">{hint}</p>
+                        )}
+                    </>
+                ) : (
+                    <div className="flex items-center justify-center gap-2">
+                        <CheckCircle2 className={`w-5 h-5 text-${accentClass} shrink-0`} />
+                        <span className="font-body text-sm font-semibold text-foreground">
+                            {files.length} file{files.length > 1 ? "s" : ""} ready
+                        </span>
+                    </div>
+                )}
+            </div>
+
+            {/* Error */}
+            {error && (
+                <p className="font-body text-xs text-red-500">{error}</p>
+            )}
+
+            {/* File previews */}
+            {files.length > 0 && (
+                <div className="space-y-2">
+                    {files.map((f, i) => (
+                        <div
+                            key={i}
+                            className="flex items-center gap-3 p-2.5 rounded-xl border border-border bg-muted/30"
+                        >
+                            {isImage(f) ? (
+                                <img
+                                    src={URL.createObjectURL(f)}
+                                    alt={f.name}
+                                    className="w-10 h-10 rounded-lg object-cover shrink-0"
+                                />
+                            ) : (
+                                <div className={`w-10 h-10 rounded-lg bg-${accentClass}/10 flex items-center justify-center shrink-0`}>
+                                    <FileText className={`w-5 h-5 text-${accentClass}`} />
+                                </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                                <p className="font-body text-xs font-semibold text-foreground truncate">{f.name}</p>
+                                <p className="font-body text-xs text-muted-foreground">
+                                    {(f.size / 1024).toFixed(0)} KB
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); remove(i); }}
+                                className="text-muted-foreground hover:text-red-500 transition-colors p-1 rounded-lg hover:bg-red-500/10"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
