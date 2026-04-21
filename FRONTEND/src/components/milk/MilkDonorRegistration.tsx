@@ -86,3 +86,95 @@ export default function MilkDonorRegistration({ onSuccess }: MilkDonorRegistrati
               type="number"
               min={0}
               max={24}
+              className="h-11 rounded-xl font-body border-milk/20 focus:border-milk"
+              value={formData.babyAge}
+              onChange={(e) => setFormData({ ...formData, babyAge: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="font-body text-[10px] font-bold uppercase tracking-widest text-muted-foreground">ML Available Daily</Label>
+            <Input
+              placeholder="e.g. 200"
+              type="number"
+              min={50}
+              max={2000}
+              className="h-11 rounded-xl font-body border-milk/20 focus:border-milk"
+              value={formData.qty || ""}
+              onChange={(e) => setFormData({ ...formData, qty: parseInt(e.target.value) || 0 })}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label className="font-body text-[10px] font-bold uppercase tracking-widest text-muted-foreground">City</Label>
+            <Input
+              placeholder="City/Area"
+              className="h-11 rounded-xl font-body border-milk/20 focus:border-milk"
+              value={formData.location}
+              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="font-body text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Pincode</Label>
+            <Input
+              placeholder="6 digits"
+              maxLength={6}
+              className="h-11 rounded-xl font-body border-milk/20 focus:border-milk"
+              value={formData.pincode}
+              onChange={(e) => setFormData({ ...formData, pincode: e.target.value.replace(/\D/g, "") })}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label className="font-body text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Available From</Label>
+            <Input
+              type="time"
+              className="h-11 rounded-xl font-body border-milk/20 focus:border-milk"
+              value={formData.availabilityStart}
+              onChange={(e) => setFormData({ ...formData, availabilityStart: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="font-body text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Available Until</Label>
+            <Input
+              type="time"
+              className="h-11 rounded-xl font-body border-milk/20 focus:border-milk"
+              value={formData.availabilityEnd}
+              onChange={(e) => setFormData({ ...formData, availabilityEnd: e.target.value })}
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/30">
+          <Checkbox
+            id="anonymous"
+            checked={formData.isAnonymous}
+            onCheckedChange={(checked) => setFormData({ ...formData, isAnonymous: !!checked })}
+          />
+          <div className="flex-1">
+            <label htmlFor="anonymous" className="font-body text-sm cursor-pointer flex items-center gap-2">
+              {formData.isAnonymous ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              Donate Anonymously
+            </label>
+            <p className="font-body text-[10px] text-muted-foreground">Your name will be hidden from hospitals</p>
+          </div>
+        </div>
+
+        <p className="font-body text-[11px] text-muted-foreground leading-relaxed italic border-l-2 border-milk/30 pl-3">
+          Your surplus can save a premature infant from complications. Verified medical screening required.
+        </p>
+
+        <Button
+          type="submit"
+          disabled={isSubmitting}
+          className="w-full bg-milk text-foreground font-body font-bold rounded-xl h-12 shadow-inner hover:scale-[1.02] transition-transform"
+        >
+          {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : "Start Donating"}
+        </Button>
+      </form>
+    </div>
+  );
+}
