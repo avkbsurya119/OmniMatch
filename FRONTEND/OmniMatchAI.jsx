@@ -189,3 +189,168 @@ export default function OmniMatchAI() {
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(224,92,92,0.3); border-radius: 2px; }
+      `}</style>
+
+      {/* Header */}
+      <div style={{
+        width: "100%", maxWidth: 780,
+        padding: "20px 24px 0",
+        display: "flex", alignItems: "center", justifyContent: "space-between"
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: "50%",
+            background: "linear-gradient(135deg, #e05c5c, #8b0000)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 20, boxShadow: "0 0 20px rgba(224,92,92,0.5)"
+          }}>❤️</div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 18, letterSpacing: "0.5px", color: "#fff" }}>
+              OmniMatch AI
+            </div>
+            <div style={{ fontSize: 11, color: "#e05c5c", letterSpacing: "1.5px", textTransform: "uppercase" }}>
+              Donor Intelligence Companion
+            </div>
+          </div>
+        </div>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 6,
+          background: "rgba(224,92,92,0.1)", border: "1px solid rgba(224,92,92,0.3)",
+          borderRadius: 20, padding: "6px 14px", fontSize: 12, color: "#e05c5c"
+        }}>
+          <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#4caf50", animation: "pulse 2s infinite" }} />
+          Online
+        </div>
+      </div>
+
+      {/* Emergency Banner */}
+      <div style={{
+        width: "100%", maxWidth: 780,
+        margin: "12px 24px 0",
+        background: "rgba(224,92,92,0.08)",
+        border: "1px solid rgba(224,92,92,0.2)",
+        borderRadius: 10, padding: "10px 16px",
+        display: "flex", alignItems: "center", gap: 10,
+        fontSize: 12, color: "rgba(255,255,255,0.6)"
+      }}>
+        <span style={{ fontSize: 16 }}>🚨</span>
+        <span>Medical Emergency? Call <strong style={{ color: "#e05c5c" }}>108</strong> immediately · Not a substitute for professional medical advice</span>
+      </div>
+
+      {/* Quick Prompts */}
+      <div style={{
+        width: "100%", maxWidth: 780,
+        padding: "12px 24px 0",
+        display: "flex", flexWrap: "wrap", gap: 8
+      }}>
+        {QUICK_PROMPTS.map((p, i) => (
+          <button key={i} onClick={() => sendMessage(p.text)}
+            style={{
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 20, padding: "6px 14px",
+              color: "rgba(255,255,255,0.7)", fontSize: 12,
+              cursor: "pointer", transition: "all 0.2s",
+              fontFamily: "Georgia, serif"
+            }}
+            onMouseEnter={e => {
+              e.target.style.background = "rgba(224,92,92,0.15)";
+              e.target.style.borderColor = "rgba(224,92,92,0.4)";
+              e.target.style.color = "#fff";
+            }}
+            onMouseLeave={e => {
+              e.target.style.background = "rgba(255,255,255,0.04)";
+              e.target.style.borderColor = "rgba(255,255,255,0.1)";
+              e.target.style.color = "rgba(255,255,255,0.7)";
+            }}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Chat Area */}
+      <div style={{
+        flex: 1, width: "100%", maxWidth: 780,
+        margin: "12px 0 0",
+        padding: "0 24px",
+        overflowY: "auto",
+        maxHeight: "calc(100vh - 320px)",
+        minHeight: 300
+      }}>
+        {messages.map((msg, i) => <Message key={i} msg={msg} />)}
+        {loading && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: "50%",
+              background: "linear-gradient(135deg, #e05c5c, #c0392b)",
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16
+            }}>❤️</div>
+            <div style={{
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: "18px 18px 18px 4px"
+            }}>
+              <TypingIndicator />
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input Area */}
+      <div style={{
+        width: "100%", maxWidth: 780,
+        padding: "12px 24px 24px",
+      }}>
+        <div style={{
+          display: "flex", gap: 10, alignItems: "flex-end",
+          background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: 16, padding: "12px 16px",
+          transition: "border-color 0.2s"
+        }}>
+          <textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
+            placeholder="Ask about donation eligibility, compatibility, procedures..."
+            rows={1}
+            style={{
+              flex: 1, background: "transparent", border: "none",
+              color: "#f0f0f0", fontSize: 14, lineHeight: "1.5",
+              resize: "none", fontFamily: "Georgia, serif",
+              maxHeight: 120, overflowY: "auto"
+            }}
+            onInput={e => {
+              e.target.style.height = "auto";
+              e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+            }}
+          />
+          <button
+            onClick={() => sendMessage()}
+            disabled={!input.trim() || loading}
+            style={{
+              width: 40, height: 40, borderRadius: "50%", border: "none",
+              background: input.trim() && !loading
+                ? "linear-gradient(135deg, #e05c5c, #c0392b)"
+                : "rgba(255,255,255,0.1)",
+              color: "#fff", cursor: input.trim() && !loading ? "pointer" : "default",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 16, flexShrink: 0, transition: "all 0.2s",
+              boxShadow: input.trim() && !loading ? "0 0 16px rgba(224,92,92,0.4)" : "none"
+            }}>
+            ➤
+          </button>
+        </div>
+        <div style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.25)", marginTop: 8 }}>
+          OmniMatch AI · For informational guidance only · Always consult a medical professional
+        </div>
+      </div>
+    </div>
+  );
+}
