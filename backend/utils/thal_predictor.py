@@ -119,3 +119,86 @@ def predict_next_interval(
     # ── Weighted moving average (exponential weights, recent = higher) ─────
     n = len(intervals)
     weights = [math.exp(0.3 * i) for i in range(n)]  # exponential: recent gets more weight
+    total_weight = sum(weights)
+    weighted_avg = sum(intervals[i] * weights[i] for i in range(n)) / total_weight
+
+    # ── Trend detection ────────────────────────────────────────────────────
+    trend = "stable"
+    trend_detail = "Transfusion intervals are stable."
+
+    if n >= 3:
+        # Compare first half average vs second half average
+        mid = n // 2
+        first_half_avg = sum(intervals[:mid]) / mid if mid > 0 else weighted_avg
+        second_half_avg = sum(intervals[mid:]) / (n - mid) if (n - mid) > 0 else weighted_avg
+
+        change_pct = ((second_half_avg - first_half_avg) / first_half_avg * 100) if first_half_avg > 0 else 0
+
+        if change_pct < -10:  # intervals getting shorter by >10%
+            trend = "shortening"
+            trend_detail = (
+                f"Intervals are shortening ({first_half_avg:.0f} → {second_half_avg:.0f} days). "
+                f"Patient may need more frequent transfusions."
+            )
+        elif change_pct > 10:  # intervals getting longer by >10%
+            trend = "lengthening"
+            trend_detail = (
+                f"Intervals are lengthening ({first_half_avg:.0f} → {second_half_avg:.0f} days). "
+                f"Patient responding well to treatment."
+            )
+
+    # ── Apply safety bounds ────────────────────────────────────────────────
+    predicted = round(weighted_avg) - SAFETY_MARGIN_DAYS
+    predicted = max(MIN_INTERVAL_DAYS, min(MAX_INTERVAL_DAYS, predicted))
+
+    # ── Confidence score ───────────────────────────────────────────────────
+    # Based on: number of data points + consistency (low std dev = high confidence)
+    std_dev = math.sqrt(sum((x - weighted_avg) ** 2 for x in intervals) / n) if n > 1 else 0
+    cv = std_dev / weighted_avg if weighted_avg > 0 else 1  # coefficient of variation
+
+    # More data points and lower variation = higher confidence
+    data_confidence = min(1.0, n / 6)  # max confidence at 6+ data points
+    consistency_confidence = max(0.0, 1.0 - cv)  # low CV = high confidence
+    confidence = round(data_confidence * 0.4 + consistency_confidence * 0.6, 2)
+
+    # ── Compute next date from most recent transfusion ─────────────────────
+    last_date = parsed[-1]
+    next_date = (last_date + timedelta(days=predicted)).isoformat()
+
+    return {
+        "predicted_days": predicted,
+        "configured_days": configured_frequency,
+        "confidence": confidence,
+        "method": "adaptive",
+        "trend": trend,
+        "trend_detail": trend_detail,
+        "intervals": intervals,
+        "avg_interval": round(weighted_avg, 1),
+        "next_date": next_date,
+    }
+
+
+def get_smart_next_date(
+    last_transfusion: str,
+    configured_freq: int,
+    past_transfusion_dates: list[str],
+) -> tuple[str, dict]:
+    """
+    Convenience function that returns (next_date_iso, prediction_details).
+    Used by thal.py when marking a transfusion as done.
+
+    If there's enough history, uses adaptive prediction.
+    Otherwise, uses configured_freq.
+    """
+    prediction = predict_next_interval(past_transfusion_dates, configured_freq)
+
+    if prediction["method"] == "adaptive":
+        interval = prediction["predicted_days"]
+    else:
+        interval = configured_freq
+
+    last = date.fromisoformat(str(last_transfusion)[:10])
+    next_date = last + timedelta(days=interval)
+
+    prediction["next_date"] = next_date.isoformat()
+    return next_date.isoformat(), prediction
