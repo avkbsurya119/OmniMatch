@@ -92,3 +92,74 @@ const BloodBridgeMap = ({ donors = [], hospitalLocation }: BloodBridgeMapProps) 
             </div>`
           )
           .openPopup();
+      }
+
+      // ── Red pins: Donors ────────────────────────────────────────────────
+      const redIcon = new L.default.Icon({
+        iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41],
+      });
+
+      donors.forEach((donor) => {
+        if (!donor.lat || !donor.lng) return;
+
+        let distanceText = "";
+        if (hospitalLocation) {
+          const dist = getDistanceKm(
+            hospitalLocation.lat,
+            hospitalLocation.lng,
+            donor.lat,
+            donor.lng
+          );
+          distanceText = `<p style="margin:6px 0 0;color:#dc2626;font-weight:700;font-size:13px">📏 ${dist.toFixed(1)} km from your hospital</p>`;
+        } else if (donor.distance_km) {
+          distanceText = `<p style="margin:6px 0 0;font-size:12px">📏 ${donor.distance_km.toFixed(1)} km away</p>`;
+        }
+
+        L.default
+          .marker([donor.lat, donor.lng], { icon: redIcon })
+          .addTo(map)
+          .bindPopup(
+            `<div style="min-width:170px;font-family:sans-serif">
+              <p style="margin:0 0 4px;font-weight:700;font-size:14px">${donor.name}</p>
+              <p style="margin:2px 0;font-size:12px">🩸 <b>${donor.blood_group}</b></p>
+              <p style="margin:2px 0;font-size:12px">📍 ${donor.city}</p>
+              <p style="margin:2px 0;font-size:12px">⭐ Trust Score: ${donor.trust_score}</p>
+              ${distanceText}
+            </div>`
+          );
+      });
+
+      // ── Fit map to show hospital + all donors ───────────────────────────
+      const allPoints: [number, number][] = [];
+      if (hospitalLocation) allPoints.push([hospitalLocation.lat, hospitalLocation.lng]);
+      donors.forEach((d) => { if (d.lat && d.lng) allPoints.push([d.lat, d.lng]); });
+
+      if (allPoints.length > 1) {
+        map.fitBounds(L.default.latLngBounds(allPoints), { padding: [50, 50] });
+      }
+    });
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  // Stringify so effect re-runs when donors or hospital location actually changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(donors), JSON.stringify(hospitalLocation)]);
+
+  return (
+    <div
+      ref={mapRef}
+      style={{ width: "100%", height: "450px", borderRadius: "12px", zIndex: 0, position: "relative" }}
+    />
+  );
+};
+
+export default BloodBridgeMap;
