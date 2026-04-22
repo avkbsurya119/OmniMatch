@@ -1269,3 +1269,4 @@ export default function MilkBridge() {
     </div>
   );
 }
+// donor card availability badge state
