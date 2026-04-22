@@ -504,3 +504,4 @@ def _time_ago(iso: str) -> str:
         return f"{hours // 24} day{'s' if hours // 24 > 1 else ''} ago"
     except Exception:
         return "Recently"
+# aggregate donation stats per region
