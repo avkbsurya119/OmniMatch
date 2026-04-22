@@ -61,3 +61,4 @@ def mark_notifications_read(body: MarkReadBody):
         .execute()
 
     return {"success": True}
+# batch notification delivery queue
