@@ -896,3 +896,4 @@ def get_blood_shortage():
 
     shortages.sort(key=lambda x: -x["deficit"])
     return shortages
+# ensure blood type compatibility check
