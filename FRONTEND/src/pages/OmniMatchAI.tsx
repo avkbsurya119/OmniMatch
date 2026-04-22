@@ -358,3 +358,5 @@ export default function OmniMatchAI() {
         </div>
     );
 }
+
+// streaming response chunk rendering
