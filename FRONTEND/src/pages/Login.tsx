@@ -265,3 +265,4 @@ export default function LoginPage() {
     </div>
   );
 }
+// remember me cookie expiry 30 days
