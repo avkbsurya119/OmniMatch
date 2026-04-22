@@ -222,3 +222,4 @@ def submit_marrow_request(body: MarrowRequestBody):
         "total_found":  match_result["total_found"],
         "matches":      match_result["matches"],
     }
+# HLA matching confidence threshold
