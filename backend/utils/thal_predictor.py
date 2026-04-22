@@ -202,3 +202,5 @@ def get_smart_next_date(
 
     prediction["next_date"] = next_date.isoformat()
     return next_date.isoformat(), prediction
+
+# feature importance for prediction model
