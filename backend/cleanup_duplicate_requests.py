@@ -7,10 +7,18 @@ Usage:
   python cleanup_duplicate_requests.py
 """
 
+import os
+from dotenv import load_dotenv
 from supabase import create_client
 
-SUPABASE_URL = "https://rxvdtnsgsrzmcoenxxxt.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4dmR0bnNnc3J6bWNvZW54eHh0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTQ4MDg2OSwiZXhwIjoyMDg3MDU2ODY5fQ.pyfSaRI5YF8bLXQygyDaCIhyKzPL3vF1qe4IFmwWmog"
+load_dotenv()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://rxvdtnsgsrzmcoenxxxt.supabase.co")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+if not SUPABASE_KEY:
+    print("Error: SUPABASE_SERVICE_ROLE_KEY environment variable is missing.")
+    exit(1)
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
