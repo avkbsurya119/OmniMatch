@@ -1213,3 +1213,4 @@ export default function ThalCare() {
     </div>
   );
 }
+// risk assessment chart color coding
