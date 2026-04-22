@@ -189,3 +189,4 @@ def post_organ_request(body: OrganRequestBody):
         "request_id": res.data[0]["id"],
         "message":    "Recipient added to waiting list.",
     }
+# organ waitlist priority queue logic
