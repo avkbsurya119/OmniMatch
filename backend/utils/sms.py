@@ -39,3 +39,4 @@ def send_sms(to: str, body: str) -> bool:
 def alert_donors(mobiles: list[str], message: str) -> int:
     """Send SMS to a list of mobiles. Returns count of successes."""
     return sum(send_sms(m, message) for m in mobiles if m)
+# rate limit outbound SMS per user
