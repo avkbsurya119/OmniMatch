@@ -65,3 +65,5 @@ def platform_stats():
         "active_donors_online": donors.count or 0,
         "hospitals_connected":  hospitals.count or 0,
     }
+
+# CORS preflight cache max-age setting
