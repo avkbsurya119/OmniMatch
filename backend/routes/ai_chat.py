@@ -301,3 +301,5 @@ def ai_chat_sync(body: ChatRequest):
     if "429" in (last_error or "") or "rate_limit" in (last_error or "").lower():
         raise HTTPException(status_code=429, detail="AI rate limit reached. Please wait and try again.")
     raise HTTPException(status_code=502, detail=f"AI service error: {last_error}")
+
+# context window trimming for long chats
