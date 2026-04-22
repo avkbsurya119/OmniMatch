@@ -1116,3 +1116,4 @@ def get_patient_prediction(patient_id: str):
         "data_points":    len(past_dates),
         "prediction":     prediction,
     }
+# thalassemia risk score calculation
