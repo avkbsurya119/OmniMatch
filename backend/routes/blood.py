@@ -558,3 +558,341 @@ def donor_respond(body: DonorRespondBody):
                 .update({"status": "donor_contacted"}) \
                 .eq("id", body.request_id) \
                 .execute()
+
+            notify(
+                user_id    = req_res.data["hospital_id"],
+                title      = f"✅ Donor accepted: {donor_name}",
+                message    = f"{donor_name} has accepted your {req_res.data['blood_group']} blood request.",
+                notif_type = "blood_response",
+                module     = "blood",
+            )
+
+    return {
+        "success": True,
+        "status":  new_status,
+        "message": f"Response recorded: {new_status}.",
+    }
+
+
+# ── GET /blood/requests/for-donor ─────────────────────────────────────────────
+
+@router.get("/requests/for-donor")
+def get_requests_for_donor(
+    donor_id: str = Query(..., description="Donor's user ID"),
+):
+    _auto_expire()
+    try:
+        donor_res = _safe_execute(
+            supabase.table("donors")
+            .select("blood_group, city, lat, lng, is_verified")
+            .eq("id", donor_id)
+            .limit(1)
+        )
+        if not donor_res.data:
+            return []
+
+        donor = donor_res.data[0]
+        if not donor.get("blood_group"):
+            return []
+        if not donor.get("is_verified"):
+            return []  # unverified donors don't see requests
+
+        donor_group = donor["blood_group"]
+        donor_lat   = donor.get("lat")
+        donor_lng   = donor.get("lng")
+
+        req_res = _safe_execute(
+            supabase.table("blood_requests")
+            .select("*, hospitals(name, city, lat, lng)")
+            .in_("status", ["open", "donor_contacted"])
+            .order("created_at", desc=True)
+            .limit(30)
+        )
+
+        # Fetch donor's already-responded request IDs
+        resp_res = _safe_execute(
+            supabase.table("blood_donor_responses")
+            .select("request_id, status")
+            .eq("donor_id", donor_id)
+        )
+        # Priority: fulfilled > accepted > declined > pending
+        # (avoids a new "pending" row overwriting an existing "accepted")
+        STATUS_PRIORITY = {"fulfilled": 4, "accepted": 3, "declined": 2, "pending": 1}
+        responded_map: dict = {}
+        for r in (resp_res.data or []):
+            rid = r["request_id"]
+            st  = r.get("status", "pending")
+            if STATUS_PRIORITY.get(st, 0) > STATUS_PRIORITY.get(responded_map.get(rid, ""), 0):
+                responded_map[rid] = st
+        # Hide requests the donor already declined
+        declined_ids = {rid for rid, st in responded_map.items() if st == "declined"}
+
+        now = datetime.now(timezone.utc)
+        results = []
+
+        for r in (req_res.data or []):
+            req_group = r.get("blood_group")
+            if req_group and not blood_compatible(donor_group, req_group):
+                continue
+
+            # Skip requests this donor already declined
+            if r["id"] in declined_ids:
+                continue
+
+            hospital      = r.get("hospitals") or {}
+            raw_ts        = r["created_at"].replace("Z", "+00:00")
+            created       = datetime.fromisoformat(raw_ts)
+            elapsed       = now - created
+            hours_elapsed = elapsed.total_seconds() / 3600
+            urgency       = (r.get("urgency") or "normal").upper()
+            max_hours     = EXPIRY_HOURS.get(urgency, 12)
+            time_left_h   = max(0, max_hours - hours_elapsed)
+            h = int(time_left_h)
+            m = int((time_left_h - h) * 60)
+
+            req_lat = r.get("lat") or hospital.get("lat")
+            req_lng = r.get("lng") or hospital.get("lng")
+            distance_km = None
+            if donor_lat and donor_lng and req_lat and req_lng:
+                distance_km = haversine(donor_lat, donor_lng, req_lat, req_lng)
+
+            results.append({
+                "id":           r["id"],
+                "hospital":     hospital.get("name", "Unknown Hospital"),
+                "group":        req_group,
+                "units":        r.get("units", 1),
+                "urgency":      urgency,
+                "timeLeft":     f"{h}h {m:02d}m",
+                "hours_left":   time_left_h,
+                "city":         hospital.get("city", ""),
+                "distance_km":  round(distance_km, 1) if distance_km else None,
+                "distance":     f"{round(distance_km, 1)} km" if distance_km else "—",
+                "posted":       f"{int(elapsed.total_seconds() / 60)} min ago"
+                                if elapsed.total_seconds() < 3600
+                                else f"{int(hours_elapsed)}h ago",
+                "my_status":    responded_map.get(r["id"], "pending"),
+                "lat":          req_lat,
+                "lng":          req_lng,
+            })
+
+        # Sort by distance if available, else by urgency + time_left
+        if donor_lat and donor_lng:
+            results.sort(key=lambda x: (x["distance_km"] if x["distance_km"] is not None else 9999))
+        else:
+            results.sort(key=lambda x: x["hours_left"])
+
+        return results
+
+    except Exception as e:
+        logger.error(f"get_requests_for_donor error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch requests.")
+
+
+# ── GET /blood/requests/hospital ─────────────────────────────────────────────
+
+@router.get("/requests/hospital")
+def get_hospital_requests(
+    hospital_id: str = Query(...),
+):
+    """Hospital-side request management table."""
+    _auto_expire()
+    try:
+        res = _safe_execute(
+            supabase.table("blood_requests")
+            .select("*")
+            .eq("hospital_id", hospital_id)
+            .order("created_at", desc=True)
+            .limit(50)
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"DB error: {e}")
+
+    # Gather response counts + donor details per request
+    request_ids = [r["id"] for r in (res.data or [])]
+    response_map: dict = {}
+    donor_map: dict = {}   # request_id -> list of {name, status}
+    if request_ids:
+        try:
+            resp_res = supabase.table("blood_donor_responses") \
+                .select("request_id, status, donor_id") \
+                .in_("request_id", request_ids) \
+                .execute()
+
+            # Fetch donor names separately
+            donor_ids = list({r["donor_id"] for r in (resp_res.data or []) if r.get("donor_id")})
+            donor_names = {}
+            if donor_ids:
+                dn_res = supabase.table("donors").select("id, name").in_("id", donor_ids).execute()
+                donor_names = {d["id"]: d["name"] for d in (dn_res.data or [])}
+
+            for row in (resp_res.data or []):
+                rid = row["request_id"]
+                if rid not in response_map:
+                    response_map[rid] = {"pending": 0, "accepted": 0, "declined": 0, "fulfilled": 0}
+                st = row.get("status", "pending")
+                response_map[rid][st] = response_map[rid].get(st, 0) + 1
+                donor_name = donor_names.get(row.get("donor_id"), "Unknown")
+                donor_map.setdefault(rid, []).append({
+                    "donor_id": row.get("donor_id"),
+                    "name":     donor_name,
+                    "status":   st,
+                })
+        except Exception as ex:
+            logger.warning(f"donor response map error: {ex}")
+
+    now = datetime.now(timezone.utc)
+    results = []
+    for r in (res.data or []):
+        raw_ts    = r["created_at"].replace("Z", "+00:00")
+        created   = datetime.fromisoformat(raw_ts)
+        elapsed_h = (now - created).total_seconds() / 3600
+        urgency   = (r.get("urgency") or "normal").upper()
+        max_hours = EXPIRY_HOURS.get(urgency, 12)
+        time_left = max(0, max_hours - elapsed_h)
+        h = int(time_left); m = int((time_left - h) * 60)
+        responses = response_map.get(r["id"], {})
+        results.append({
+            "id":              r["id"],
+            "blood_group":     r["blood_group"],
+            "units":           r.get("units", 1),
+            "urgency":         urgency,
+            "status":          r["status"],
+            "timeLeft":        f"{h}h {m:02d}m",
+            "hours_left":      time_left,
+            "created_at":      r["created_at"],
+            "donors_pending":  responses.get("pending", 0),
+            "donors_accepted": responses.get("accepted", 0),
+            "donors_declined": responses.get("declined", 0),
+            "donors_fulfilled":responses.get("fulfilled", 0),
+            "notes":           r.get("notes", ""),
+            "donor_responses": donor_map.get(r["id"], []),
+        })
+    return results
+
+
+# ── GET /blood/history/donor ──────────────────────────────────────────────────
+
+@router.get("/history/donor")
+def get_donor_history(
+    donor_id: str = Query(...),
+):
+    """Donor history: received / accepted / missed / completed."""
+    try:
+        res = _safe_execute(
+            supabase.table("blood_donor_responses")
+            .select("*, blood_requests(blood_group, units, urgency, status, created_at, hospitals(name, city))")
+            .eq("donor_id", donor_id)
+            .order("created_at", desc=True)
+            .limit(50)
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"DB error: {e}")
+
+    results = []
+    for row in (res.data or []):
+        req = row.get("blood_requests") or {}
+        hospital = req.get("hospitals") or {}
+        results.append({
+            "response_id":  row["id"],
+            "request_id":   row["request_id"],
+            "status":       row["status"],   # pending|accepted|declined|fulfilled
+            "responded_at": row.get("responded_at"),
+            "blood_group":  req.get("blood_group", "—"),
+            "units":        req.get("units", 1),
+            "urgency":      (req.get("urgency") or "normal").upper(),
+            "hospital":     hospital.get("name", "Unknown"),
+            "city":         hospital.get("city", ""),
+            "request_status": req.get("status", ""),
+            "created_at":   row.get("created_at"),
+        })
+    return results
+
+
+# ── POST /blood/requests/{id}/fulfill ────────────────────────────────────────
+
+@router.post("/requests/{request_id}/fulfill")
+def fulfill_request(request_id: str, hospital_id: str = Query(...)):
+    """Hospital marks a request fulfilled."""
+    req = supabase.table("blood_requests") \
+        .select("hospital_id") \
+        .eq("id", request_id) \
+        .single() \
+        .execute()
+    if not req.data:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    if req.data["hospital_id"] != hospital_id:
+        raise HTTPException(status_code=403, detail="Not your request.")
+
+    supabase.table("blood_requests") \
+        .update({"status": "fulfilled"}) \
+        .eq("id", request_id) \
+        .execute()
+
+    # Mark all accepted responses as fulfilled
+    supabase.table("blood_donor_responses") \
+        .update({"status": "fulfilled"}) \
+        .eq("request_id", request_id) \
+        .eq("status", "accepted") \
+        .execute()
+
+    return {"success": True, "message": "Request marked fulfilled."}
+
+
+# ── POST /blood/requests/{id}/close ──────────────────────────────────────────
+
+@router.post("/requests/{request_id}/close")
+def close_request(request_id: str, hospital_id: str = Query(...)):
+    """Hospital manually closes an open request."""
+    req = supabase.table("blood_requests") \
+        .select("hospital_id") \
+        .eq("id", request_id) \
+        .single() \
+        .execute()
+    if not req.data:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    if req.data["hospital_id"] != hospital_id:
+        raise HTTPException(status_code=403, detail="Not your request.")
+
+    supabase.table("blood_requests") \
+        .update({"status": "closed"}) \
+        .eq("id", request_id) \
+        .execute()
+
+    return {"success": True, "message": "Request closed."}
+
+
+# ── GET /blood/shortage ───────────────────────────────────────────────────────
+
+@router.get("/shortage")
+def get_blood_shortage():
+    req_res   = supabase.table("blood_requests").select("blood_group").eq("status", "open").execute()
+    donor_res = supabase.table("donors").select("blood_group").eq("is_available", True).execute()
+
+    req_count:   dict[str, int] = {}
+    donor_count: dict[str, int] = {}
+
+    for r in (req_res.data or []):
+        g = r["blood_group"]
+        req_count[g] = req_count.get(g, 0) + 1
+
+    for d in (donor_res.data or []):
+        g = d.get("blood_group") or ""
+        if g:
+            donor_count[g] = donor_count.get(g, 0) + 1
+
+    all_groups = set(req_count) | set(donor_count)
+    shortages  = []
+    for g in all_groups:
+        reqs   = req_count.get(g, 0)
+        donors = donor_count.get(g, 0)
+        deficit = reqs - donors
+        shortages.append({
+            "blood_group":      g,
+            "requests":         reqs,
+            "donors_available": donors,
+            "deficit":          deficit,
+            "severity":         "critical" if deficit >= 3 else "urgent" if deficit > 0 else "ok",
+        })
+
+    shortages.sort(key=lambda x: -x["deficit"])
+    return shortages
