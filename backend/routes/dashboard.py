@@ -303,3 +303,204 @@ def get_hospital_dashboard(hospital_id: str):
     # Build combined active_requests list matching HospitalDashboard.tsx
     # Batch-fetch all matches and donors to avoid N+1 queries / socket exhaustion
     all_requests = (blood_reqs.data or []) + (plat_reqs.data or [])
+    all_request_ids = [r["id"] for r in all_requests]
+
+    # Single query to get all pending matches for these requests
+    all_matches_data = []
+    if all_request_ids:
+        all_matches = _safe_execute(
+            supabase.table("matches")
+            .select("id, donor_id, status, request_id")
+            .in_("request_id", all_request_ids)
+            .eq("status", "pending")
+        )
+        all_matches_data = all_matches.data or []
+
+    # Group matches by request_id
+    matches_by_request = {}
+    for m in all_matches_data:
+        rid = m.get("request_id")
+        if rid not in matches_by_request:
+            matches_by_request[rid] = []
+        if m.get("donor_id"):
+            matches_by_request[rid].append(m["donor_id"])
+
+    # Single query to get all needed donors
+    all_donor_ids = list({did for dids in matches_by_request.values() for did in dids})
+    donors_by_id = {}
+    if all_donor_ids:
+        d_res = _safe_execute(
+            supabase.table("donors")
+            .select("id, name, mobile, city")
+            .in_("id", all_donor_ids)
+        )
+        for d in (d_res.data or []):
+            donors_by_id[d["id"]] = d
+
+    active = []
+    for r in (blood_reqs.data or []):
+        donor_ids = matches_by_request.get(r["id"], [])
+        donors = [donors_by_id[did] for did in donor_ids if did in donors_by_id]
+        active.append({
+            "id":       r["id"],
+            "group":    r["blood_group"],
+            "units":    r.get("units", 1),
+            "urgency":  (r.get("urgency") or "urgent").upper(),
+            "module":   "BloodBridge",
+            "matched":  len(donors),
+            "donors":   donors,
+            "posted":   _time_ago(r.get("created_at", "")),
+        })
+    for r in (plat_reqs.data or []):
+        donor_ids = matches_by_request.get(r["id"], [])
+        donors = [donors_by_id[did] for did in donor_ids if did in donors_by_id]
+        active.append({
+            "id":       r["id"],
+            "group":    f"{r.get('blood_group','')} Platelets",
+            "units":    r.get("units", 1),
+            "urgency":  (r.get("urgency") or "urgent").upper(),
+            "module":   "PlateletAlert",
+            "matched":  len(donors),
+            "donors":   donors,
+            "posted":   _time_ago(r.get("created_at", "")),
+        })
+
+    # Fulfilled this month
+    fulfilled = supabase.table("matches").select("id", count="exact") \
+        .eq("status", "fulfilled").execute()
+
+    return {
+        "hospital": {
+            "id":          hospital_id,
+            "name":        h.get("name", ""),
+            "city":        h.get("city", ""),
+            "is_verified": h.get("is_verified", False),
+        },
+        "stats": {
+            "active_requests":       len(active),
+            "matched_this_month":    fulfilled.count or 0,
+            "units_received":        (fulfilled.count or 0) * 2,
+            "avg_match_time":        "18m",
+        },
+        "active_requests": active,
+    }
+
+
+# ── GET /dashboard/admin ──────────────────────────────────────────────────────
+
+@router.get("/admin")
+def get_admin_dashboard():
+    """Powers AdminDashboard component in Dashboard.tsx."""
+    unverified_donors = supabase.table("donors") \
+        .select("id, name, city, created_at, donor_types") \
+        .eq("is_verified", False) \
+        .order("created_at", desc=True) \
+        .limit(20) \
+        .execute()
+
+    unverified_hospitals = supabase.table("hospitals") \
+        .select("id, name, city, reg_number, created_at") \
+        .eq("is_verified", False) \
+        .order("created_at", desc=True) \
+        .limit(20) \
+        .execute()
+
+    flagged = supabase.table("donors") \
+        .select("id, name, city, trust_score") \
+        .lt("trust_score", 20) \
+        .execute()
+
+    total_donors    = supabase.table("donors").select("id", count="exact").execute()
+    total_hospitals = supabase.table("hospitals").select("id", count="exact").execute()
+    total_matches   = supabase.table("matches").select("id", count="exact").execute()
+
+    pending = (len(unverified_donors.data or []) + len(unverified_hospitals.data or []))
+
+    return {
+        "stats": {
+            "pending_verifications": pending,
+            "flagged_accounts":      len(flagged.data or []),
+            "total_users":           (total_donors.count or 0) + (total_hospitals.count or 0),
+            "todays_matches":        total_matches.count or 0,
+        },
+        "verification_queue": {
+            "donors":    [
+                {
+                    "id":    d["id"],
+                    "name":  d["name"],
+                    "type":  "Donor",
+                    "city":  d.get("city", ""),
+                    "docs":  ", ".join(d.get("donor_types") or []),
+                    "time":  _time_ago(d.get("created_at", "")),
+                }
+                for d in (unverified_donors.data or [])
+            ],
+            "hospitals": [
+                {
+                    "id":   h["id"],
+                    "name": h["name"],
+                    "type": "Hospital",
+                    "city": h.get("city", ""),
+                    "docs": f"Reg: {h.get('reg_number','')}",
+                    "time": _time_ago(h.get("created_at", "")),
+                }
+                for h in (unverified_hospitals.data or [])
+            ],
+        },
+        "flagged_accounts": flagged.data or [],
+    }
+
+
+# ── POST /dashboard/admin/verify ──────────────────────────────────────────────
+
+class VerifyBody(BaseModel):
+    entity_type: str    # "donor" or "hospital"
+    entity_id:   str
+    approved:    bool
+
+
+@router.post("/admin/verify")
+def admin_verify(body: VerifyBody):
+    """Called by Approve/Reject buttons in AdminDashboard.tsx verification queue."""
+    if body.entity_type == "donor":
+        supabase.table("donors").update({
+            "is_verified": body.approved,
+            "trust_score": 60 if body.approved else 10,
+        }).eq("id", body.entity_id).execute()
+    elif body.entity_type == "hospital":
+        supabase.table("hospitals").update({
+            "is_verified": body.approved,
+        }).eq("id", body.entity_id).execute()
+    else:
+        raise HTTPException(status_code=400, detail="entity_type must be 'donor' or 'hospital'")
+
+    return {
+        "success": True,
+        "message": f"{'Approved' if body.approved else 'Rejected'} {body.entity_type} {body.entity_id}",
+    }
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _fmt_date(iso: str) -> str:
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(iso[:10]).strftime("%b %d, %Y")
+    except Exception:
+        return iso
+
+
+def _time_ago(iso: str) -> str:
+    try:
+        from datetime import datetime, timezone
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        diff = datetime.now(timezone.utc) - dt
+        mins = int(diff.total_seconds() / 60)
+        if mins < 60:
+            return f"{mins} min ago"
+        hours = mins // 60
+        if hours < 24:
+            return f"{hours} hr{'s' if hours > 1 else ''} ago"
+        return f"{hours // 24} day{'s' if hours // 24 > 1 else ''} ago"
+    except Exception:
+        return "Recently"
