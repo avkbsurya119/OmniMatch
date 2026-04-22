@@ -863,3 +863,606 @@ def create_milk_match(body: MilkMatchCreateBody):
         .select("id") \
         .eq("request_id", body.request_id) \
         .eq("donor_id", body.donor_id) \
+        .limit(1) \
+        .execute()
+
+    if existing.data:
+        return {
+            "success":  True,
+            "match_id": existing.data[0]["id"],
+            "message":  "Match already exists",
+        }
+
+    match_data = {
+        "request_id":    body.request_id,
+        "donor_id":      body.donor_id,
+        "milk_donor_id": milk_donor_id,
+        "status":        "pending",
+        "notified_at":   datetime.now(timezone.utc).isoformat(),
+    }
+
+    res = supabase.table("milk_matches").insert(match_data).execute()
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to create match")
+
+    _create_notification(
+        user_id=body.donor_id,
+        title="You've been matched!",
+        message="A hospital has requested your milk donation. Please respond on OmniMatch.",
+        notif_type="milk_match",
+    )
+
+    return {
+        "success":  True,
+        "match_id": res.data[0]["id"],
+        "message":  "Match created and donor notified.",
+    }
+
+
+class MilkMatchResponseBody(BaseModel):
+    donor_id: str
+    status: str = Field(..., pattern="^(accepted|declined)$")
+
+
+@router.post("/matches/{match_id}/respond")
+def respond_to_milk_match(match_id: str, body: MilkMatchResponseBody):
+    """Donor accepts or declines a match."""
+    match_res = supabase.table("milk_matches") \
+        .select("*, milk_requests(hospital_id, hospitals(name))") \
+        .eq("id", match_id) \
+        .single() \
+        .execute()
+
+    if not match_res.data:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    match = match_res.data
+
+    if match.get("donor_id") != body.donor_id:
+        raise HTTPException(status_code=403, detail="You are not authorized to respond to this match")
+
+    supabase.table("milk_matches").update({
+        "status":       body.status,
+        "responded_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", match_id).execute()
+
+    try:
+        supabase.table("matches").update({
+            "status": body.status,
+        }).eq("request_id", match.get("request_id")).eq("donor_id", body.donor_id).eq("module", "milk").execute()
+    except Exception:
+        pass
+
+    request = match.get("milk_requests") or {}
+    hospital_id = request.get("hospital_id")
+
+    if hospital_id:
+        if body.status == "accepted":
+            _create_notification(
+                user_id=hospital_id,
+                title="Donor accepted!",
+                message="A milk donor has accepted your request. Please coordinate pickup.",
+                notif_type="milk_response",
+            )
+        else:
+            _create_notification(
+                user_id=hospital_id,
+                title="Donor declined",
+                message="A donor has declined. We're finding other matches.",
+                notif_type="milk_response",
+            )
+
+    return {
+        "success": True,
+        "status":  body.status,
+        "message": f"You have {body.status} this request.",
+    }
+
+
+@router.get("/matches/donor/{donor_id}")
+def get_donor_matches(donor_id: str):
+    """Get all matches for a specific donor."""
+    try:
+        res = supabase.table("milk_matches") \
+            .select("*, milk_requests(hospital_id, daily_quantity_ml, urgency, hospitals(name, city))") \
+            .eq("donor_id", donor_id) \
+            .order("created_at", desc=True) \
+            .limit(20) \
+            .execute()
+    except Exception as e:
+        logger.error(f"Error fetching donor matches: {e}")
+        return []
+
+    results = []
+    for m in (res.data or []):
+        request = m.get("milk_requests") or {}
+        hospital = request.get("hospitals") or {}
+
+        results.append({
+            "id":            m["id"],
+            "request_id":    m.get("request_id"),
+            "hospital_name": hospital.get("name", "Unknown Hospital"),
+            "hospital_city": hospital.get("city", ""),
+            "volume_ml":     request.get("daily_quantity_ml"),
+            "urgency":       (request.get("urgency") or "normal").upper(),
+            "status":        m.get("status"),
+            "pickup_date":   m.get("pickup_date"),
+            "pickup_time":   m.get("pickup_time"),
+            "created_at":    m.get("created_at"),
+            "responded_at":  m.get("responded_at"),
+        })
+
+    return results
+
+
+class MilkMatchUpdateBody(BaseModel):
+    status: str
+    pickup_date: Optional[str] = None
+    pickup_time: Optional[str] = None
+
+
+@router.patch("/matches/{match_id}")
+def update_milk_match_status(match_id: str, body: MilkMatchUpdateBody):
+    """Update match status (for hospital workflow)."""
+    match_res = supabase.table("milk_matches") \
+        .select("*, milk_requests(hospital_id), donors(id, name, mobile)") \
+        .eq("id", match_id) \
+        .single() \
+        .execute()
+
+    if not match_res.data:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    match = match_res.data
+    donor = match.get("donors") or {}
+
+    update_data = {"status": body.status}
+    if body.pickup_date:
+        update_data["pickup_date"] = body.pickup_date
+    if body.pickup_time:
+        update_data["pickup_time"] = body.pickup_time
+
+    supabase.table("milk_matches").update(update_data).eq("id", match_id).execute()
+
+    donor_id = match.get("donor_id")
+    if donor_id:
+        if body.status == "pickup_scheduled":
+            pickup_info = f"{body.pickup_date}"
+            if body.pickup_time:
+                pickup_info += f" at {body.pickup_time}"
+            _create_notification(
+                user_id=donor_id,
+                title="Pickup Scheduled!",
+                message=f"Your milk donation pickup is scheduled for {pickup_info}. Please keep the milk refrigerated.",
+                notif_type="milk_pickup",
+            )
+            if donor.get("mobile"):
+                try:
+                    from utils.sms import send_sms
+                    send_sms(donor["mobile"], f"OmniMatch: Your milk donation pickup is scheduled for {pickup_info}. Thank you!")
+                except Exception:
+                    pass
+        elif body.status == "collected":
+            _create_notification(
+                user_id=donor_id,
+                title="Donation Collected",
+                message="Your milk donation has been collected. Thank you for helping save lives!",
+                notif_type="milk_collected",
+            )
+        elif body.status == "delivered":
+            _create_notification(
+                user_id=donor_id,
+                title="Donation Delivered!",
+                message="Your milk donation has reached the NICU. A baby is being nourished because of you!",
+                notif_type="milk_delivered",
+            )
+
+    return {
+        "success": True,
+        "message": f"Match status updated to {body.status}",
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# POST ENDPOINTS - Donation Tracking (Milk Passport)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class MilkDonationBody(BaseModel):
+    donor_id: str
+    request_id: Optional[str] = None
+    collection_date: str
+    volume_ml: int = Field(..., ge=50, le=5000)
+    pasteurized: bool = False
+    pasteurization_date: Optional[str] = None
+    pasteurization_method: Optional[str] = None   # accepted but not stored (column absent)
+    receiving_hospital_id: Optional[str] = None
+    receiving_infant_ref: Optional[str] = None
+    # NOTE: 'notes' field removed — column does not exist in milk_donations table
+
+
+@router.post("/donations")
+def create_milk_donation(body: MilkDonationBody):
+    """
+    Log a new milk donation (Milk Passport).
+
+    Rules:
+      - If a request_id is provided, the donated volume_ml MUST exactly match
+        the request's daily_quantity_ml. Any mismatch returns HTTP 400 with a
+        clear message so the frontend can surface it to the donor.
+      - Passport ID generation is collision-safe (retries + UUID fallback).
+    """
+    # ── 1. Validate donor exists ─────────────────────────────────────────────
+    donor_res = supabase.table("donors").select("id, name").eq("id", body.donor_id).limit(1).execute()
+    if not donor_res.data:
+        logger.warning(f"[create_milk_donation] donor_id={body.donor_id} not in donors table")
+        raise HTTPException(status_code=400, detail="Donor not found. Please refresh and try again.")
+
+    # ── 2. Validate volume matches request exactly (when request_id supplied) ─
+    requested_qty: Optional[int] = None
+    if body.request_id:
+        try:
+            req_res = supabase.table("milk_requests") \
+                .select("id, daily_quantity_ml, status, infant_name, hospitals(name)") \
+                .eq("id", body.request_id) \
+                .single() \
+                .execute()
+        except Exception as e:
+            logger.error(f"[create_milk_donation] failed to fetch request {body.request_id}: {e}")
+            raise HTTPException(status_code=400, detail="Could not verify the linked request. Please try again.")
+
+        if not req_res.data:
+            raise HTTPException(status_code=400, detail=f"Request '{body.request_id}' not found.")
+
+        req_data = req_res.data
+
+        # Block donations against already-fulfilled requests
+        if req_data.get("status") == "fulfilled":
+            raise HTTPException(
+                status_code=409,
+                detail="This request has already been fulfilled. No further donations are needed for it."
+            )
+
+        requested_qty = req_data.get("daily_quantity_ml")
+
+        if requested_qty is not None and body.volume_ml != requested_qty:
+            hospital_name = (req_data.get("hospitals") or {}).get("name", "the hospital")
+            infant_ref = req_data.get("infant_name") or "the infant"
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Volume mismatch: {hospital_name} requested exactly {requested_qty}ml/day "
+                    f"for {infant_ref}, but you entered {body.volume_ml}ml. "
+                    f"Please set the volume to {requested_qty}ml to proceed."
+                )
+            )
+
+    # ── 3. Get milk_donor_id if exists ───────────────────────────────────────
+    milk_donor = supabase.table("milk_donors").select("id").eq("donor_id", body.donor_id).limit(1).execute()
+    milk_donor_id = milk_donor.data[0]["id"] if milk_donor.data else None
+
+    # ── 4. Validate hospital if provided ─────────────────────────────────────
+    if body.receiving_hospital_id:
+        hosp = supabase.table("hospitals").select("id").eq("id", body.receiving_hospital_id).limit(1).execute()
+        if not hosp.data:
+            raise HTTPException(status_code=400, detail="Receiving hospital not found")
+
+    # ── 5. Generate collision-safe passport ID ───────────────────────────────
+    passport_id = _generate_passport_id()
+
+    # ── 6. Calculate expiry (7 days from pasteurization or collection) ───────
+    base_date_str = body.pasteurization_date or body.collection_date
+    expiry = None
+    try:
+        base = date.fromisoformat(base_date_str[:10])
+        expiry = (base + timedelta(days=7)).isoformat()
+    except Exception as e:
+        logger.warning(f"[create_milk_donation] expiry calc failed: {e}")
+
+    # ── 7. Insert into milk_donations ────────────────────────────────────────
+    # NOTE: 'notes' and 'pasteurization_method' intentionally excluded — columns do not exist in DB
+    donation_data = {
+        "passport_id":           passport_id,
+        "donor_id":              body.donor_id,
+        "milk_donor_id":         milk_donor_id,
+        "request_id":            body.request_id,
+        "collection_date":       body.collection_date,
+        "volume_ml":             body.volume_ml,
+        "pasteurized":           body.pasteurized,
+        "pasteurization_date":   body.pasteurization_date,
+        "expiry_date":           expiry,
+        "receiving_hospital_id": body.receiving_hospital_id,
+        "receiving_infant_ref":  body.receiving_infant_ref,
+        "status":                "pasteurized" if body.pasteurized else "collected",
+    }
+
+    try:
+        res = supabase.table("milk_donations").insert(donation_data).execute()
+    except Exception as e:
+        err_str = str(e)
+        logger.error(f"[create_milk_donation] milk_donations insert failed: {err_str}")
+        # Surface duplicate passport ID clearly (shouldn't happen after fix, but just in case)
+        if "23505" in err_str or "duplicate key" in err_str.lower():
+            raise HTTPException(
+                status_code=409,
+                detail="A donation record with this Passport ID already exists. Please try submitting again."
+            )
+        raise HTTPException(status_code=500, detail=f"Failed to create donation record: {err_str[:200]}")
+
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to create donation record — no data returned")
+
+    # ── 8. Write to milk_bank registry (non-critical) ────────────────────────
+    try:
+        vol_ml = body.volume_ml or 0
+        supabase.table("milk_bank").insert({
+            "passport_id":      passport_id,
+            "donor_id":         body.donor_id,
+            "quantity_liters":  round(vol_ml / 1000, 3),
+            "pasteurized_date": body.pasteurization_date or body.collection_date,
+            "expiry_date":      expiry,
+            "status":           "Pasteurized" if body.pasteurized else "Available",
+        }).execute()
+    except Exception as e:
+        logger.warning(f"[create_milk_donation] milk_bank insert failed (non-critical): {e}")
+
+    # ── 9. Update last_donation_date on milk_donor (non-critical) ────────────
+    if milk_donor_id:
+        try:
+            supabase.table("milk_donors").update({
+                "last_donation_date": body.collection_date,
+            }).eq("id", milk_donor_id).execute()
+        except Exception as e:
+            logger.warning(f"[create_milk_donation] milk_donor update failed (non-critical): {e}")
+
+    # ── 10. Close linked milk_request → removes from Critical Shortages ──────
+    if body.request_id:
+        try:
+            supabase.table("milk_requests") \
+                .update({
+                    "status":       "fulfilled",
+                    "fulfilled_at": datetime.now(timezone.utc).isoformat(),
+                }) \
+                .eq("id", body.request_id) \
+                .execute()
+            logger.info(f"[create_milk_donation] request {body.request_id} marked fulfilled")
+        except Exception as e:
+            logger.warning(f"[create_milk_donation] milk_request close failed (non-critical): {e}")
+
+    # ── 11. Auto-create milk_matches row (non-critical) ──────────────────────
+    if body.receiving_hospital_id:
+        try:
+            match_query = supabase.table("milk_matches").select("id")
+            if body.request_id:
+                match_query = match_query.eq("request_id", body.request_id)
+            existing_match = match_query.eq("donor_id", body.donor_id).limit(1).execute()
+
+            if not existing_match.data:
+                match_insert = {
+                    "donor_id":      body.donor_id,
+                    "milk_donor_id": milk_donor_id,
+                    "status":        "delivered",
+                    "notified_at":   datetime.now(timezone.utc).isoformat(),
+                    "responded_at":  datetime.now(timezone.utc).isoformat(),
+                }
+                if body.request_id:
+                    match_insert["request_id"] = body.request_id
+                supabase.table("milk_matches").insert(match_insert).execute()
+                logger.info(f"[create_milk_donation] auto-created milk_matches row for donor {body.donor_id}")
+        except Exception as e:
+            logger.warning(f"[create_milk_donation] auto milk_matches insert failed (non-critical): {e}")
+
+    # ── 12. Impact tracking in central matches table (non-critical) ──────────
+    try:
+        supabase.table("matches").insert({
+            "module":     "milk",
+            "donor_id":   body.donor_id,
+            "request_id": body.request_id,
+            "status":     "fulfilled",
+        }).execute()
+    except Exception as e:
+        logger.warning(f"[create_milk_donation] central matches insert failed (non-critical): {e}")
+
+    return {
+        "success":     True,
+        "passport_id": passport_id,
+        "donation_id": res.data[0]["id"],
+        "expiry_date": expiry,
+        "message":     f"Donation logged! Milk Passport ID: {passport_id}",
+    }
+
+
+@router.get("/donations/{passport_id}")
+def get_donation_by_passport(passport_id: str):
+    """Get donation details by Milk Passport ID."""
+    res = supabase.table("milk_donations") \
+        .select("*, donors(name), hospitals:receiving_hospital_id(name, city)") \
+        .eq("passport_id", passport_id) \
+        .single() \
+        .execute()
+
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Donation not found")
+
+    d = res.data
+    donor = d.get("donors") or {}
+    hospital = d.get("hospitals") or {}
+
+    return {
+        "passport_id":         d["passport_id"],
+        "donor_name":          donor.get("name", "Anonymous"),
+        "collection_date":     d.get("collection_date"),
+        "volume_ml":           d.get("volume_ml"),
+        "pasteurized":         d.get("pasteurized"),
+        "pasteurization_date": d.get("pasteurization_date"),
+        "expiry_date":         d.get("expiry_date"),
+        "receiving_hospital":  hospital.get("name"),
+        "receiving_city":      hospital.get("city"),
+        "receiving_infant_ref": d.get("receiving_infant_ref"),
+        "status":              d.get("status"),
+        "quality_check_passed": d.get("quality_check_passed"),
+        "created_at":          d.get("created_at"),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Dashboard Endpoints
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/dashboard/hospital/{hospital_id}")
+def get_hospital_milk_dashboard(hospital_id: str):
+    """Hospital-side MilkBridge dashboard."""
+    hosp = supabase.table("hospitals").select("id, name, city").eq("id", hospital_id).single().execute()
+    if not hosp.data:
+        raise HTTPException(status_code=404, detail="Hospital not found")
+
+    hospital = hosp.data
+
+    requests_res = supabase.table("milk_requests") \
+        .select("*") \
+        .eq("hospital_id", hospital_id) \
+        .eq("status", "open") \
+        .order("created_at", desc=True) \
+        .limit(10) \
+        .execute()
+
+    active_requests = []
+    for r in (requests_res.data or []):
+        active_requests.append({
+            "id":         r["id"],
+            "infant_ref": r.get("infant_name", "General NICU"),
+            "volume_ml":  r.get("daily_quantity_ml"),
+            "urgency":    r.get("urgency", "normal"),
+            "status":     r.get("status", "open"),
+            "created_at": r.get("created_at"),
+        })
+
+    request_ids = [r["id"] for r in (requests_res.data or [])]
+    matches = []
+
+    if request_ids:
+        matches_res = supabase.table("milk_matches") \
+            .select("*, donors(name, city), milk_donors(quantity_ml_per_day)") \
+            .in_("request_id", request_ids) \
+            .order("created_at", desc=True) \
+            .limit(20) \
+            .execute()
+
+        for m in (matches_res.data or []):
+            donor = m.get("donors") or {}
+            milk_donor = m.get("milk_donors") or {}
+            matches.append({
+                "id":            m["id"],
+                "donor_id":      m.get("donor_id"),
+                "milk_donor_id": m.get("milk_donor_id"),
+                "donor_name":    donor.get("name", "Anonymous"),
+                "city":          donor.get("city", ""),
+                "quantity_ml":   milk_donor.get("quantity_ml_per_day"),
+                "status":        m.get("status"),
+                "request_id":    m.get("request_id"),
+                "pickup_date":   m.get("pickup_date"),
+                "pickup_time":   m.get("pickup_time"),
+            })
+
+    # Also pull direct donations (donors who donated without going through match flow)
+    if request_ids:
+        try:
+            direct_donations = supabase.table("milk_donations") \
+                .select("*, donors(name, city), milk_donors(quantity_ml_per_day)") \
+                .eq("receiving_hospital_id", hospital_id) \
+                .in_("request_id", request_ids) \
+                .order("created_at", desc=True) \
+                .limit(20) \
+                .execute()
+
+            existing_donor_ids = {m["donor_id"] for m in matches}
+            for d in (direct_donations.data or []):
+                if d.get("donor_id") not in existing_donor_ids:
+                    donor = d.get("donors") or {}
+                    milk_donor = d.get("milk_donors") or {}
+                    matches.append({
+                        "id":            d["id"],
+                        "donor_id":      d.get("donor_id"),
+                        "milk_donor_id": d.get("milk_donor_id"),
+                        "donor_name":    donor.get("name", "Anonymous"),
+                        "city":          donor.get("city", ""),
+                        "quantity_ml":   d.get("volume_ml"),
+                        "status":        "delivered",
+                        "request_id":    d.get("request_id"),
+                        "pickup_date":   None,
+                        "pickup_time":   None,
+                    })
+                    existing_donor_ids.add(d.get("donor_id"))
+        except Exception as e:
+            logger.warning(f"[hospital_dashboard] direct donations fetch failed (non-critical): {e}")
+
+    donations_res = supabase.table("milk_donations") \
+        .select("*, donors(name)") \
+        .eq("receiving_hospital_id", hospital_id) \
+        .order("collection_date", desc=True) \
+        .limit(20) \
+        .execute()
+
+    donation_history = []
+    for d in (donations_res.data or []):
+        donor = d.get("donors") or {}
+        donation_history.append({
+            "passport_id": d.get("passport_id"),
+            "donor_name":  donor.get("name", "Anonymous"),
+            "volume_ml":   d.get("volume_ml"),
+            "date":        d.get("collection_date"),
+            "status":      d.get("status"),
+        })
+
+    total_received = sum(d.get("volume_ml", 0) for d in (donations_res.data or []))
+    fulfilled_count = len([d for d in (donations_res.data or []) if d.get("status") == "delivered"])
+
+    return {
+        "hospital": {
+            "id":   hospital["id"],
+            "name": hospital["name"],
+            "city": hospital.get("city", ""),
+        },
+        "stats": {
+            "active_requests":    len(active_requests),
+            "pending_matches":    len([m for m in matches if m["status"] == "pending"]),
+            "accepted_matches":   len([m for m in matches if m["status"] == "accepted"]),
+            "total_received_ml":  total_received,
+            "donations_received": fulfilled_count,
+        },
+        "active_requests":  active_requests,
+        "matched_donors":   matches,
+        "donation_history": donation_history,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PATCH Endpoints - Updates
+# ══════════════════════════════════════════════════════════════════════════════
+
+class MilkDonorUpdateBody(BaseModel):
+    is_available: Optional[bool] = None
+    quantity_ml_per_day: Optional[int] = None
+    baby_age_months: Optional[int] = None
+    availability_start: Optional[str] = None
+    availability_end: Optional[str] = None
+    is_anonymous: Optional[bool] = None
+
+
+@router.patch("/donors/{milk_donor_id}")
+def update_milk_donor(milk_donor_id: str, body: MilkDonorUpdateBody):
+    """Update milk donor availability or profile."""
+    update_data = {k: v for k, v in body.dict().items() if v is not None}
+
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    res = supabase.table("milk_donors").update(update_data).eq("id", milk_donor_id).execute()
+
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Milk donor not found")
+
+    return {
+        "success": True,
+        "message": "Profile updated",
+        "data":    res.data[0],
+    }
