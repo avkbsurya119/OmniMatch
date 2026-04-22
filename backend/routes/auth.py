@@ -292,3 +292,4 @@ def verify_otp(req: OtpVerifyRequest):
     supabase.table("otp_store").delete().eq("mobile", req.mobile).execute()
 
     return {"success": True, "verified": True, "mobile": req.mobile}
+# validate session tokens on each request
