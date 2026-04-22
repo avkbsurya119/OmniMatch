@@ -342,3 +342,4 @@ export default function Navbar() {
     </nav>
   );
 }
+// mobile hamburger menu toggle handler
