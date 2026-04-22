@@ -721,3 +721,4 @@ export default function Dashboard() {
     </div>
   );
 }
+// refresh dashboard stats on interval
