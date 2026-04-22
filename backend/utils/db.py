@@ -19,3 +19,5 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # `supabase_auth` — a separate client used only for auth operations (sign_up, sign_in,
 # admin.list_users, etc.). Its session is allowed to be overwritten by sign_in calls.
 supabase_auth = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# connection pool size tuning for prod
