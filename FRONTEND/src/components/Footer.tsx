@@ -126,3 +126,5 @@ export default function Footer() {
     </footer>
   );
 }
+
+// footer quick links accessibility labels
