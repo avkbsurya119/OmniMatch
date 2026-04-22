@@ -704,3 +704,4 @@ def request_specific_platelet_donor(body: DirectDonorRequestBody):
         "match_id":  match_res.data[0]["id"],
         "message":   f"Direct apheresis request sent to {donor_name}."
     }
+# platelet shelf life expiry tracking
