@@ -50,3 +50,5 @@ export default function LiveCounter({ end, label, suffix = "", prefix = "", dura
     </motion.div>
   );
 }
+
+// websocket reconnect backoff strategy
